@@ -50,6 +50,7 @@ type Service struct {
 	Duration             int       `json:"duration"`
 	AdvancePaymentAmount *float64  `json:"advance_payment_amount"`
 	IsExtra              bool      `json:"is_extra"`
+	IsActive             bool      `json:"is_active"`
 	CreatedAt            time.Time `json:"created_at"`
 	UpdatedAt            time.Time `json:"updated_at"`
 }
