@@ -41,15 +41,8 @@ func JWTAuth(jwtSecret string) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims := &Claims{}
-			token, err := jwt.ParseWithClaims(parts[1], claims, func(t *jwt.Token) (interface{}, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-				}
-				return []byte(jwtSecret), nil
-			}, jwt.WithValidMethods([]string{"HS256"}))
-
-			if err != nil || !token.Valid {
+			claims, err := parseToken(parts[1], jwtSecret)
+			if err != nil {
 				httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired token", nil)
 				return
 			}
@@ -66,6 +59,29 @@ func JWTAuth(jwtSecret string) func(http.Handler) http.Handler {
 	}
 }
 
+func parseToken(tokenString, secret string) (*Claims, error) {
+	claims := &Claims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(secret), nil
+	}, jwt.WithValidMethods([]string{"HS256"}))
+	if err != nil || !token.Valid {
+		if err == nil {
+			err = fmt.Errorf("invalid token")
+		}
+		return nil, err
+	}
+	return claims, nil
+}
+
+// ParseRefreshToken parses a refresh token without rejecting it for being a refresh.
+// Caller must check claims.TokenType == "refresh".
+func ParseRefreshToken(tokenString, secret string) (*Claims, error) {
+	return parseToken(tokenString, secret)
+}
+
 func UserIDFromContext(ctx context.Context) uuid.UUID {
 	id, _ := ctx.Value(UserIDKey).(uuid.UUID)
 	return id
@@ -76,7 +92,9 @@ func BusinessIDFromContext(ctx context.Context) uuid.UUID {
 	return id
 }
 
-func GenerateTokenPair(userID, businessID uuid.UUID, secret string, accessExpiry, refreshExpiry time.Duration) (string, string, error) {
+// GenerateTokenPair issues an (access, refresh) pair. The refresh token carries
+// a unique JTI in RegisteredClaims.ID; the caller must persist it for rotation.
+func GenerateTokenPair(userID, businessID uuid.UUID, secret string, accessExpiry, refreshExpiry time.Duration) (access, refresh string, refreshJTI uuid.UUID, err error) {
 	now := time.Now()
 
 	accessClaims := Claims{
@@ -88,24 +106,26 @@ func GenerateTokenPair(userID, businessID uuid.UUID, secret string, accessExpiry
 			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
-	accessToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(secret))
+	access, err = jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString([]byte(secret))
 	if err != nil {
-		return "", "", fmt.Errorf("signing access token: %w", err)
+		return "", "", uuid.Nil, fmt.Errorf("signing access token: %w", err)
 	}
 
+	refreshJTI = uuid.New()
 	refreshClaims := Claims{
 		UserID:     userID,
 		BusinessID: businessID,
 		TokenType:  "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        refreshJTI.String(),
 			ExpiresAt: jwt.NewNumericDate(now.Add(refreshExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(secret))
+	refresh, err = jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(secret))
 	if err != nil {
-		return "", "", fmt.Errorf("signing refresh token: %w", err)
+		return "", "", uuid.Nil, fmt.Errorf("signing refresh token: %w", err)
 	}
 
-	return accessToken, refreshToken, nil
+	return access, refresh, refreshJTI, nil
 }

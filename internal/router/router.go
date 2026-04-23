@@ -43,6 +43,7 @@ func New(
 
 	// Public routes
 	r.Route("/auth", func(r chi.Router) {
+		r.Use(middleware.PerIP(5, time.Minute))
 		r.Post("/signup", authHandler.Signup)
 		r.Post("/login", authHandler.Login)
 		r.Post("/refresh", authHandler.Refresh)

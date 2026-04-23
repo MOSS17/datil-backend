@@ -41,6 +41,7 @@ func main() {
 	// Repositories
 	businessRepo := repository.NewBusinessRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
+	refreshRepo := repository.NewRefreshTokenRepository(pool)
 	categoryRepo := repository.NewCategoryRepository(pool)
 	serviceRepo := repository.NewServiceRepository(pool)
 	appointmentRepo := repository.NewAppointmentRepository(pool)
@@ -49,7 +50,7 @@ func main() {
 	dashboardRepo := repository.NewDashboardRepository(pool)
 
 	// Handlers
-	authHandler := handler.NewAuthHandler(userRepo, businessRepo, pool, cfg)
+	authHandler := handler.NewAuthHandler(userRepo, businessRepo, refreshRepo, pool, cfg)
 	businessHandler := handler.NewBusinessHandler(businessRepo)
 	categoryHandler := handler.NewCategoryHandler(categoryRepo)
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
