@@ -13,6 +13,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 0 | Foundation — response envelope, storage seam, model cleanup | **Merged** | [#1](https://github.com/MOSS17/datil-backend/pull/1) |
 | 1 | Auth — signup / login / refresh with rotation | **Merged** | [#2](https://github.com/MOSS17/datil-backend/pull/2) |
 | 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) |
+| 2.1 | Categories CRUD (services depend on it) | **In review** | [#6](https://github.com/MOSS17/datil-backend/pull/6) |
 | 3 | Public booking flow + availability algorithm | Not started | — |
 | 4 | Polish — startup migrations, non-root container, CI | Not started | — |
 
