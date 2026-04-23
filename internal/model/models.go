@@ -175,6 +175,11 @@ type LinkExtraRequest struct {
 	ExtraID uuid.UUID `json:"extra_id"`
 }
 
+type CategoryRequest struct {
+	Name          string `json:"name"`
+	AllowMultiple bool   `json:"allow_multiple"`
+}
+
 type BookingDetails struct {
 	CustomerName string    `json:"customer_name"`
 	BusinessName string    `json:"business_name"`
