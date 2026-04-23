@@ -147,6 +147,34 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type UpdateBusinessRequest struct {
+	Name        string  `json:"name"`
+	Location    *string `json:"location"`
+	Description *string `json:"description"`
+}
+
+type UpdateBankRequest struct {
+	BeneficiaryClabe string `json:"beneficiary_clabe"`
+	BankName         string `json:"bank_name"`
+	BeneficiaryName  string `json:"beneficiary_name"`
+}
+
+type ServiceRequest struct {
+	CategoryID           uuid.UUID `json:"category_id"`
+	Name                 string    `json:"name"`
+	Description          *string   `json:"description"`
+	MinPrice             float64   `json:"min_price"`
+	MaxPrice             *float64  `json:"max_price"`
+	Duration             int       `json:"duration"`
+	AdvancePaymentAmount *float64  `json:"advance_payment_amount"`
+	IsExtra              bool      `json:"is_extra"`
+	IsActive             *bool     `json:"is_active"`
+}
+
+type LinkExtraRequest struct {
+	ExtraID uuid.UUID `json:"extra_id"`
+}
+
 type BookingDetails struct {
 	CustomerName string    `json:"customer_name"`
 	BusinessName string    `json:"business_name"`

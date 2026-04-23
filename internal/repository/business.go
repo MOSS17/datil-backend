@@ -50,7 +50,8 @@ func (r *businessRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Busine
 }
 
 func (r *businessRepo) GetByURL(ctx context.Context, url string) (*model.Business, error) {
-	return nil, errors.New("not implemented")
+	row := r.pool.QueryRow(ctx, `SELECT `+businessColumns+` FROM businesses WHERE url = $1`, url)
+	return scanBusiness(row)
 }
 
 func (r *businessRepo) Create(ctx context.Context, tx pgx.Tx, b *model.Business) error {
@@ -67,13 +68,47 @@ func (r *businessRepo) Create(ctx context.Context, tx pgx.Tx, b *model.Business)
 }
 
 func (r *businessRepo) Update(ctx context.Context, id uuid.UUID, b *model.Business) error {
-	return errors.New("not implemented")
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE businesses
+		    SET name = $1, location = $2, description = $3, updated_at = NOW()
+		  WHERE id = $4`,
+		b.Name, b.Location, b.Description, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating business: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *businessRepo) UpdateBank(ctx context.Context, id uuid.UUID, clabe, bankName, beneficiaryName string) error {
-	return errors.New("not implemented")
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE businesses
+		    SET beneficiary_clabe = $1, bank_name = $2, beneficiary_name = $3, updated_at = NOW()
+		  WHERE id = $4`,
+		clabe, bankName, beneficiaryName, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating business bank: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (r *businessRepo) UpdateLogo(ctx context.Context, id uuid.UUID, logoURL string) error {
-	return errors.New("not implemented")
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE businesses SET logo_url = $1, updated_at = NOW() WHERE id = $2`,
+		logoURL, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating business logo: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
