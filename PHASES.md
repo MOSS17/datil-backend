@@ -2,22 +2,30 @@
 
 This file is the running execution plan for the work outlined in `TODO-backend.md` and `TODO-security.md`. It exists so a fresh session can pick up mid-flight without needing the whole conversation history.
 
-**Workflow**: one PR per phase, branched off `main`, named `phase-N-<slug>`. Each phase is independently shippable; the frontend (`../frontend/`) flips its mocks off one area at a time.
+**Workflow**: one PR per phase, branched off `main`, named `phase-N-<slug>`. Each phase ships in two halves: a backend PR here, then a frontend wire-up PR in `../frontend/` (`MOSS17/datil-frontend`) that flips mocks for the new surface and runs a manual smoke. **A phase is not "done" until both PRs are merged and the smoke is green.** Don't start phase N+1 backend work before phase N's frontend cutover lands — drift compounds fast.
 
 ---
 
 ## Status
 
-| Phase | Title | State | PR |
-|---|---|---|---|
-| 0 | Foundation — response envelope, storage seam, model cleanup | **Merged** | [#1](https://github.com/MOSS17/datil-backend/pull/1) |
-| 1 | Auth — signup / login / refresh with rotation | **Merged** | [#2](https://github.com/MOSS17/datil-backend/pull/2) |
-| 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) |
-| 2.1 | Categories CRUD (services depend on it) | **In review** | [#6](https://github.com/MOSS17/datil-backend/pull/6) |
-| 3 | Public booking flow + availability algorithm | Not started | — |
-| 4 | Polish — startup migrations, non-root container, CI | Not started | — |
+| Phase | Title | Backend | Backend PR | Frontend | Frontend PR |
+|---|---|---|---|---|---|
+| 0 | Foundation — response envelope, storage seam, model cleanup | **Merged** | [#1](https://github.com/MOSS17/datil-backend/pull/1) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
+| 1 | Auth — signup / login / refresh with rotation | **Merged** | [#2](https://github.com/MOSS17/datil-backend/pull/2) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
+| 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
+| 2.1 | Categories CRUD (services depend on it) | **In review** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
+| 3 | Public booking flow + availability algorithm | Not started | — | Not started (still mocked: `/book/*`, `useBusinessBySlug`) | — |
+| 4 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
 
-**To pick up work**: check "State" above, branch off `main` as `phase-N-<slug>`, execute the phase below, open a PR, update this table.
+**Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
+
+**To pick up work**: check the row's *backend* state. If `Not started`, branch off `main` as `phase-N-<slug>`, execute the phase below, open a PR. Then in `../frontend/`, branch as `wire-phase-N`, replace the relevant mocks, run the smoke checklist, open a PR. Update both columns of this table in the same PR they describe.
+
+**Phase completion criteria** (apply to every row before moving on):
+1. Backend PR merged on `main`.
+2. Frontend wire-up PR merged.
+3. Manual end-to-end smoke against the local backend confirms the affected dashboard / booking pages render and accept input correctly.
+4. No regressions on previously-wired surfaces (sign in still works after wiring services, etc.).
 
 **API path convention**: every endpoint below is mounted under `/api/v1/`. The doc omits the prefix when describing route shapes (e.g. "POST /auth/signup") but real requests are `POST /api/v1/auth/signup`. Static dev-only file server at `/static/uploads/*` is *not* prefixed — it's not an API.
 
@@ -322,8 +330,40 @@ Keep it pure — no DB, no time.Now(). Inject `date` and all data. This is what 
 - `/book/{url}/*`: `httprate.LimitByIP(20, time.Minute)`.
 - `POST /book/{url}/reserve`: tighter `5/min` (Twilio send cost).
 
-### Ship gate
-- Frontend `feat/customer-facing-store` branch pointed at local backend: `/book/<slug>` → date picker populated → reserve with image upload → owner receives WhatsApp → appointment visible in owner dashboard.
+### Ship gate (backend)
+- `go test ./internal/booking/...` passes all 6+ table cases.
+- `curl /api/v1/book/<slug>` with a real slug returns the business + categories.
+- `curl /api/v1/book/<slug>/availability?date=YYYY-MM-DD&service_ids=…` returns slots for a workday with hours configured.
+- `POST /api/v1/book/<slug>/reserve` with multipart payload + payment proof creates the appointment, returns it, and a few seconds later the owner's WhatsApp number receives the confirmation message (or the noop notifier logs a stub if Twilio isn't configured).
+- Concurrency: fire two reserves at the same `start_time` against the same business in parallel — exactly one wins; the other returns 409 / overlap error. Proves the `SELECT ... FOR UPDATE` race guard works.
+
+### Frontend cutover (separate PR in `../frontend/`)
+Branch `wire-phase-3` off frontend `main`. The backend PR must be merged first so the routes exist for smoke testing.
+
+1. **Mocks router** (`src/api/mocks/router.ts`):
+   - Remove the `/^\/business\/slug\/([^/]+)$/` and `/^\/business\/([^/]+)$/` mock handlers — backend now serves business by slug at `/book/{url}`.
+   - Remove the `/^\/services$/` and `/^\/services\/([^/]+)$/` *public* fallbacks (still gated by no-token), since the booking flow now reads through `/book/{url}/services`.
+   - The dashboard's `/services` calls already hit real backend (covered in phase 2 via `AUTHED_REAL`).
+
+2. **Booking-flow API hooks** (rewrite `useBusiness.ts:useBusinessBySlug` and friends, or add new `useBooking.ts`):
+   - `useBusinessBySlug(slug)` → `GET /book/{slug}` (returns business + categories in one shot per phase 3 spec).
+   - `useBookingServices(slug)` → `GET /book/{slug}/services` (services grouped by category, with extras).
+   - `useAvailability(slug, date, serviceIds)` → `GET /book/{slug}/availability?date=...&service_ids=...`.
+   - `useReserve(slug)` → `POST /book/{slug}/reserve` as multipart (`customer_name`, `customer_phone`, `customer_email`, `start_time`, `service_ids[]`, `extra_ids[]`, optional `payment_proof` file).
+
+3. **Reconcile `Category` type**: drop the now-optional `description` and `display_order` from `Category` once the booking flow no longer reads them. Re-tighten `groupServicesByCategory` and `groupExtrasByCategory` sorts. Or: add `display_order` to the backend (a real product call — drag-to-reorder for owners) and keep them. Decide before this phase ships.
+
+4. **Smoke checklist** (against local backend with `STORAGE_PROVIDER=local ENV=development`):
+   - `/book/<your-business-slug>` loads (the slug is in the JWT after signup, or visible in the database).
+   - Date picker populates only the dates with availability for the selected services.
+   - Selecting a date shows the time slots that survived workday ∩ ¬personal-time ∩ ¬appointments.
+   - Reserve flow accepts a customer name/phone/email, time slot, and image upload.
+   - After reserve, refresh the owner dashboard → the new appointment appears in the day view.
+   - Twilio sandbox / noop notifier fires post-commit (check server logs).
+   - Concurrency check: open two browser tabs, race-click reserve on the same slot — only one succeeds; the other shows a friendly conflict error.
+
+5. **Things that should still error gracefully** (not in scope for phase 3):
+   - `/calendar/*` and `/appointments/*` are still mocked/half-mocked. Don't touch in this PR.
 
 ---
 
