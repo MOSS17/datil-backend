@@ -356,3 +356,56 @@ Keep it pure — no DB, no time.Now(). Inject `date` and all data. This is what 
 - If a decision changes: update "Scope decisions" and note why in the PR description.
 - If a phase's design drifts during implementation: update that phase section to match reality before merging.
 - When all phases merge: move this file's body to an `archive/` directory and replace with a one-line pointer. The roadmap is done when `grep -rn "not implemented" internal/` returns zero hits.
+
+---
+
+## Production setup (operator runbook)
+
+Not a phase — this is the checklist for the first cutover from local-only to a live deployment. Skip until at least phases 1–3 are merged and you're ready to point a real frontend at a real backend. Local development with `STORAGE_PROVIDER=local` works without any of this.
+
+### R2 (object storage)
+
+Cloudflare R2 hosts business logos and (phase 3) customer payment proofs. Free tier covers everything below current scale.
+
+1. **Create the bucket** in the Cloudflare dashboard → R2 → "Create bucket". Pick a name (e.g. `datil-prod`); region "Automatic" is fine. Repeat for `datil-staging` if you want a separate non-prod bucket.
+2. **Make objects publicly readable**. R2 buckets are private by default. Two options:
+   - **Custom domain** (recommended for prod): R2 → bucket → Settings → "Custom Domains" → connect a subdomain like `cdn.datil.app`. Cloudflare provisions the DNS record and TLS automatically.
+   - **r2.dev subdomain** (fast for staging): bucket → Settings → "Public Access" → enable. URL shape: `https://pub-<hash>.r2.dev`. Rate-limited and not for production volume.
+3. **Create an API token** scoped to this bucket: R2 → "Manage R2 API Tokens" → "Create API Token" → permissions "Object Read & Write", scope to the specific bucket(s). Save the Access Key ID and Secret Access Key — the secret is shown once.
+4. **Grab the account ID** from the right-hand sidebar of the R2 overview page.
+
+### Production env vars
+
+Set on the deployment platform (Railway, Fly, etc.). The app validates these at startup and fails fast on missing R2 creds when `STORAGE_PROVIDER=r2`.
+
+| Var | Example | Notes |
+|---|---|---|
+| `ENV` | `production` | Disables the `/static/uploads/*` dev mount. |
+| `PORT` | `8080` | Railway sets this automatically. |
+| `DATABASE_URL` | `postgres://…` | From the managed Postgres add-on. |
+| `JWT_SECRET` | 32+ random bytes | `openssl rand -base64 48`. Never commit. Rotating it invalidates every issued token. |
+| `JWT_ACCESS_EXPIRY` | `15m` | Default; raise only with a reason. |
+| `JWT_REFRESH_EXPIRY` | `168h` | 7 days. |
+| `BCRYPT_COST` | `12` | Default; bump to 13 if signup latency budget allows. |
+| `CORS_ALLOWED_ORIGINS` | `https://app.datil.mx` | Comma-separated. No trailing slashes. Must include every frontend origin that calls this API. |
+| `STORAGE_PROVIDER` | `r2` | Anything else falls back to local disk — wrong for prod (Railway disks are ephemeral). |
+| `R2_ACCOUNT_ID` | `abc123…` | From dashboard sidebar. |
+| `R2_ACCESS_KEY_ID` | `…` | From the API token. |
+| `R2_SECRET_ACCESS_KEY` | `…` | From the API token. Treat as password-grade. |
+| `R2_BUCKET` | `datil-prod` | Match the bucket created in step 1. |
+| `R2_PUBLIC_BASE_URL` | `https://cdn.datil.app` | Custom domain or `https://pub-<hash>.r2.dev`. No trailing slash. |
+| `TWILIO_ACCOUNT_SID` | `AC…` | Optional — booking confirmation SMS/WhatsApp. App degrades to noop notifier if unset. |
+| `TWILIO_AUTH_TOKEN` | `…` | Required if SID is set. |
+| `TWILIO_WHATSAPP_FROM` | `whatsapp:+1415…` | Twilio's sandbox or approved sender. |
+
+### Sanity checks before flipping DNS
+
+- `curl https://api.datil.mx/healthz` (when added) → 200.
+- `curl -X POST .../auth/signup …` round-trip works against the prod DB.
+- `PUT /business/logo` with a real PNG → response `logo_url` starts with `R2_PUBLIC_BASE_URL`. Open it in a browser → image renders. If it 403s, the bucket isn't public; revisit step 2.
+- `R2_TEST_BUCKET=<staging-bucket> R2_TEST_PUBLIC_BASE_URL=… go test -run TestR2Roundtrip ./internal/storage/...` against the staging bucket as a one-off proof the credentials work.
+- Frontend's production build pointed at the prod API — no CORS errors in console.
+
+### What's deferred to Phase 4
+
+Phase 4 covers the deployment-hygiene work that should land *before* the first public traffic: startup migrations (`migrate.Up()` at boot), non-root container, CI with `govulncheck`. Don't open prod to users until phase 4 ships.
