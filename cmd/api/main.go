@@ -14,6 +14,7 @@ import (
 	"github.com/mossandoval/datil-api/internal/notification"
 	"github.com/mossandoval/datil-api/internal/repository"
 	"github.com/mossandoval/datil-api/internal/router"
+	"github.com/mossandoval/datil-api/internal/storage"
 )
 
 func main() {
@@ -38,6 +39,12 @@ func main() {
 		notifier = &notification.NoopNotifier{}
 	}
 
+	// Storage uploader
+	uploader, err := newUploader(cfg)
+	if err != nil {
+		log.Fatalf("initializing uploader: %v", err)
+	}
+
 	// Repositories
 	businessRepo := repository.NewBusinessRepository(pool)
 	userRepo := repository.NewUserRepository(pool)
@@ -51,7 +58,7 @@ func main() {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(userRepo, businessRepo, refreshRepo, pool, cfg)
-	businessHandler := handler.NewBusinessHandler(businessRepo)
+	businessHandler := handler.NewBusinessHandler(businessRepo, uploader)
 	categoryHandler := handler.NewCategoryHandler(categoryRepo)
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
 	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, notifier)
@@ -73,6 +80,16 @@ func main() {
 		dashboardHandler,
 		bookingHandler,
 	)
+
+	// In dev, serve the local upload directory so logos uploaded via the
+	// LocalDiskUploader are reachable at LOCAL_PUBLIC_BASE_URL. Skipped in
+	// production where the uploader writes to R2.
+	if cfg.Env == "development" && cfg.StorageProvider == "local" {
+		mux := http.NewServeMux()
+		mux.Handle("/static/uploads/", http.StripPrefix("/static/uploads/", http.FileServer(http.Dir(cfg.LocalUploadRoot))))
+		mux.Handle("/", r)
+		r = mux
+	}
 
 	// Server
 	srv := &http.Server{
@@ -105,4 +122,19 @@ func main() {
 	}
 
 	log.Println("server stopped")
+}
+
+func newUploader(cfg *config.Config) (storage.Uploader, error) {
+	switch cfg.StorageProvider {
+	case "r2":
+		return storage.NewR2Uploader(storage.R2Config{
+			AccountID:       cfg.R2AccountID,
+			AccessKeyID:     cfg.R2AccessKeyID,
+			SecretAccessKey: cfg.R2SecretAccessKey,
+			Bucket:          cfg.R2Bucket,
+			PublicBaseURL:   cfg.R2PublicBaseURL,
+		})
+	default:
+		return storage.NewLocalDiskUploader(cfg.LocalUploadRoot, cfg.LocalPublicBaseURL)
+	}
 }

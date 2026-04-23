@@ -81,6 +81,7 @@ func New(
 				r.Get("/", serviceHandler.Get)
 				r.Put("/", serviceHandler.Update)
 				r.Delete("/", serviceHandler.Delete)
+				r.Get("/extras", serviceHandler.ListExtras)
 				r.Post("/extras", serviceHandler.LinkExtra)
 				r.Delete("/extras/{extraId}", serviceHandler.UnlinkExtra)
 			})
