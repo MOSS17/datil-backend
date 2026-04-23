@@ -10,13 +10,15 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 
 | Phase | Title | State | PR |
 |---|---|---|---|
-| 0 | Foundation — response envelope, storage seam, model cleanup | **Merged-pending** | [#1](https://github.com/MOSS17/datil-backend/pull/1) |
-| 1 | Auth — signup / login / refresh with rotation | **In review** | [#2](https://github.com/MOSS17/datil-backend/pull/2) |
-| 2 | Logo + service extras (R2 wired) | **In review** | [#3](https://github.com/MOSS17/datil-backend/pull/3) |
+| 0 | Foundation — response envelope, storage seam, model cleanup | **Merged** | [#1](https://github.com/MOSS17/datil-backend/pull/1) |
+| 1 | Auth — signup / login / refresh with rotation | **Merged** | [#2](https://github.com/MOSS17/datil-backend/pull/2) |
+| 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) |
 | 3 | Public booking flow + availability algorithm | Not started | — |
 | 4 | Polish — startup migrations, non-root container, CI | Not started | — |
 
 **To pick up work**: check "State" above, branch off `main` as `phase-N-<slug>`, execute the phase below, open a PR, update this table.
+
+**API path convention**: every endpoint below is mounted under `/api/v1/`. The doc omits the prefix when describing route shapes (e.g. "POST /auth/signup") but real requests are `POST /api/v1/auth/signup`. Static dev-only file server at `/static/uploads/*` is *not* prefixed — it's not an API.
 
 ---
 
@@ -166,9 +168,9 @@ Minimum bar: none required; the handler logic is thin enough and integration tes
 ### Ship gate
 
 Run the full flow manually:
-1. `curl -X POST localhost:8080/auth/signup -d '{"name":"M","email":"a@b.c","password":"pw123456","business_name":"Demo"}'` → receive `AuthResponse` with both tokens.
-2. `curl -X GET localhost:8080/dashboard -H "Authorization: Bearer $ACCESS"` → 200 (or 501 if dashboard still stubbed — the point is "not 401").
-3. `curl -X POST localhost:8080/auth/refresh -d '{"refresh_token":"'$REFRESH'"}'` → new pair.
+1. `curl -X POST localhost:8080/api/v1/auth/signup -d '{"name":"M","email":"a@b.c","password":"pw123456","business_name":"Demo"}'` → receive `AuthResponse` with both tokens.
+2. `curl -X GET localhost:8080/api/v1/dashboard -H "Authorization: Bearer $ACCESS"` → 200 (or 501 if dashboard still stubbed — the point is "not 401").
+3. `curl -X POST localhost:8080/api/v1/auth/refresh -d '{"refresh_token":"'$REFRESH'"}'` → new pair.
 4. Same refresh token again → 401. `SELECT used_at FROM refresh_tokens` → all user's tokens have `used_at IS NOT NULL`.
 
 ### Files to modify / create
@@ -401,8 +403,8 @@ Set on the deployment platform (Railway, Fly, etc.). The app validates these at 
 ### Sanity checks before flipping DNS
 
 - `curl https://api.datil.mx/healthz` (when added) → 200.
-- `curl -X POST .../auth/signup …` round-trip works against the prod DB.
-- `PUT /business/logo` with a real PNG → response `logo_url` starts with `R2_PUBLIC_BASE_URL`. Open it in a browser → image renders. If it 403s, the bucket isn't public; revisit step 2.
+- `curl -X POST https://api.datil.mx/api/v1/auth/signup …` round-trip works against the prod DB.
+- `PUT /api/v1/business/logo` with a real PNG → response `logo_url` starts with `R2_PUBLIC_BASE_URL`. Open it in a browser → image renders. If it 403s, the bucket isn't public; revisit step 2.
 - `R2_TEST_BUCKET=<staging-bucket> R2_TEST_PUBLIC_BASE_URL=… go test -run TestR2Roundtrip ./internal/storage/...` against the staging bucket as a one-off proof the credentials work.
 - Frontend's production build pointed at the prod API — no CORS errors in console.
 
