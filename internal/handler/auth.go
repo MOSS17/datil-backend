@@ -35,8 +35,8 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	// 5. Create user with business_id within tx
 	// 6. Commit transaction
 	// 7. Generate token pair
-	// 8. Return LoginResponse
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	// 8. Return AuthResponse
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // Login authenticates a user and returns a JWT token pair.
@@ -47,8 +47,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// 2. Look up user by email
 	// 3. Compare password with bcrypt
 	// 4. Generate token pair
-	// 5. Return LoginResponse
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	// 5. Return AuthResponse
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // Refresh issues a new token pair given a valid refresh token.
@@ -59,6 +59,6 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// 2. Validate refresh token and extract claims
 	// 3. Verify token type is "refresh"
 	// 4. Generate new token pair
-	// 5. Return LoginResponse
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	// 5. Return AuthResponse
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }

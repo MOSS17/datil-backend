@@ -17,17 +17,17 @@ func NewCalendarHandler(repo repository.CalendarRepository) *CalendarHandler {
 // Connect initiates the OAuth flow for a calendar provider.
 // POST /calendar/{provider}/connect
 func (h *CalendarHandler) Connect(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // Callback handles the OAuth callback from a calendar provider.
 // GET /calendar/{provider}/callback
 func (h *CalendarHandler) Callback(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // Disconnect removes a calendar integration.
 // DELETE /calendar/{provider}
 func (h *CalendarHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }

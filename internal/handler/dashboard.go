@@ -17,5 +17,5 @@ func NewDashboardHandler(repo repository.DashboardRepository) *DashboardHandler 
 // Get returns dashboard data: today's count, week count, monthly income, upcoming, latest.
 // GET /dashboard
 func (h *DashboardHandler) Get(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
