@@ -34,23 +34,23 @@ func NewBookingHandler(
 // GetBusiness returns the public page for a business.
 // GET /book/{url}
 func (h *BookingHandler) GetBusiness(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // GetServices returns available services grouped by category.
 // GET /book/{url}/services
 func (h *BookingHandler) GetServices(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // GetAvailability returns available time slots for a date.
 // GET /book/{url}/availability?date=YYYY-MM-DD
 func (h *BookingHandler) GetAvailability(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // Reserve creates a new reservation from the public booking page.
 // POST /book/{url}/reserve
 func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }

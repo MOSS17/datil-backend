@@ -11,7 +11,7 @@ type Business struct {
 	Name             string     `json:"name"`
 	Location         *string    `json:"location"`
 	Description      *string    `json:"description"`
-	Logo             *string    `json:"logo"`
+	LogoURL          *string    `json:"logo_url"`
 	URL              string     `json:"url"`
 	BeneficiaryClabe *string    `json:"beneficiary_clabe"`
 	BankName         *string    `json:"bank_name"`
@@ -137,7 +137,7 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type LoginResponse struct {
+type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	User         User   `json:"user"`

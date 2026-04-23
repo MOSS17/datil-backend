@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/mossandoval/datil-api/internal/httpx"
 )
 
 type contextKey string
@@ -30,13 +31,13 @@ func JWTAuth(jwtSecret string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
-				http.Error(w, `{"error":"missing authorization header"}`, http.StatusUnauthorized)
+				httpx.WriteError(w, http.StatusUnauthorized, "missing authorization header", nil)
 				return
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, `{"error":"invalid authorization header format"}`, http.StatusUnauthorized)
+				httpx.WriteError(w, http.StatusUnauthorized, "invalid authorization header format", nil)
 				return
 			}
 
@@ -49,12 +50,12 @@ func JWTAuth(jwtSecret string) func(http.Handler) http.Handler {
 			}, jwt.WithValidMethods([]string{"HS256"}))
 
 			if err != nil || !token.Valid {
-				http.Error(w, `{"error":"invalid or expired token"}`, http.StatusUnauthorized)
+				httpx.WriteError(w, http.StatusUnauthorized, "invalid or expired token", nil)
 				return
 			}
 
 			if claims.TokenType == "refresh" {
-				http.Error(w, `{"error":"refresh tokens cannot be used for authentication"}`, http.StatusUnauthorized)
+				httpx.WriteError(w, http.StatusUnauthorized, "refresh tokens cannot be used for authentication", nil)
 				return
 			}
 

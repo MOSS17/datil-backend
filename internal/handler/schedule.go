@@ -17,29 +17,29 @@ func NewScheduleHandler(repo repository.ScheduleRepository) *ScheduleHandler {
 // GetWorkdays returns all 7 workdays with their hours.
 // GET /schedule/workdays
 func (h *ScheduleHandler) GetWorkdays(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // UpdateWorkdays bulk updates workdays (enabled/disabled + hours).
 // PUT /schedule/workdays
 func (h *ScheduleHandler) UpdateWorkdays(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // ListPersonalTime returns all personal time blocks for the current user.
 // GET /schedule/personal-time
 func (h *ScheduleHandler) ListPersonalTime(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // CreatePersonalTime creates a new personal time block.
 // POST /schedule/personal-time
 func (h *ScheduleHandler) CreatePersonalTime(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
 
 // DeletePersonalTime deletes a personal time block.
 // DELETE /schedule/personal-time/{id}
 func (h *ScheduleHandler) DeletePersonalTime(w http.ResponseWriter, r *http.Request) {
-	ErrorJSON(w, http.StatusNotImplemented, "not implemented")
+	WriteError(w, http.StatusNotImplemented, "not implemented", nil)
 }
