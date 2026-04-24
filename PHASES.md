@@ -402,6 +402,26 @@ Branch `wire-phase-3` off frontend `main`. The backend PR must be merged first s
 
 ---
 
+## Deferred work (known, chosen to defer)
+
+Items we've hit and consciously pushed off. Revisit when someone needs them, not before.
+
+### Per-business timezone (availability rendering)
+
+**Problem**: `internal/booking/availability.go::ComputeSlots` emits each `TimeSlot.Start` in the server's `time.Local`. Go's `time.Local` is derived from the container's `TZ` env var — if `TZ` is unset (the Docker default), `time.Local` is UTC. A Friday 9am–5pm workday configured in the DB then serializes as `09:00:00Z`, which a customer in America/Mexico_City sees rendered as "9 AM" (the frontend slices `HH:MM` off the string) but actually falls at 2 AM their time. Reservations still round-trip correctly because the same offset is sent back on submit — it's a display-layer lie, not a data bug.
+
+**Workaround for now**: set `TZ=America/Mexico_City` on the Go container at deploy time so `time.Local` matches business reality. Good enough for a single-region MVP. Document the var in the production runbook env table when adding it.
+
+**Real fix (deferred)**:
+1. Add `businesses.timezone` column (IANA name, e.g. `America/Mexico_City`), defaulted at signup (infer from browser or ask).
+2. Thread a `*time.Location` through `BookingHandler.GetAvailability` → `ComputeSlots`. Availability is then computed in each business's own tz, independent of server tz.
+3. Update `work_hours`/`personal_time` consumers to treat their TIME columns as wall-clock in that tz.
+4. Frontend stops needing to trust the offset in the response — it can render the timezone alongside the slot.
+
+**Trigger to actually do it**: second business onboarded in a different timezone from the first, or a customer-support ticket about wrong times.
+
+---
+
 ## Production setup (operator runbook)
 
 Not a phase — this is the checklist for the first cutover from local-only to a live deployment. Skip until at least phases 1–3 are merged and you're ready to point a real frontend at a real backend. Local development with `STORAGE_PROVIDER=local` works without any of this.
