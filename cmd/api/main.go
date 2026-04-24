@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/mossandoval/datil-api/internal/calendar"
 	"github.com/mossandoval/datil-api/internal/config"
 	"github.com/mossandoval/datil-api/internal/handler"
@@ -25,6 +29,10 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	if err := runMigrations(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+		log.Fatalf("running migrations: %v", err)
+	}
 
 	pool, err := config.NewDatabasePool(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -137,6 +145,23 @@ func main() {
 	}
 
 	log.Println("server stopped")
+}
+
+// runMigrations applies pending schema changes before the pgx pool is opened.
+// Idempotent: migrate.ErrNoChange is not an error.
+func runMigrations(databaseURL, migrationsPath string) error {
+	m, err := migrate.New("file://"+migrationsPath, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		// Close returns (sourceErr, dbErr); both are best-effort here.
+		_, _ = m.Close()
+	}()
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
+	}
+	return nil
 }
 
 func newUploader(cfg *config.Config) (storage.Uploader, error) {

@@ -19,7 +19,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 4 | Owner dashboard + appointments CRUD | **Merged** | [#13](https://github.com/MOSS17/datil-backend/pull/13) | **Merged** | [frontend#8](https://github.com/MOSS17/datil-frontend/pull/8) |
 | 5 | Schedule config (workdays + personal time) | **Merged** | [#14](https://github.com/MOSS17/datil-backend/pull/14) | **Merged** | [frontend#9](https://github.com/MOSS17/datil-frontend/pull/9) |
 | 6 | Calendar integration — Google push + ICS subscription feed | **In review** | [#16](https://github.com/MOSS17/datil-backend/pull/16) | **In review** | [frontend#10](https://github.com/MOSS17/datil-frontend/pull/10) |
-| 7 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
+| 7 | Polish — startup migrations, non-root container, CI | **In review** | — | n/a (no frontend surface) | — |
 
 **Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
 
