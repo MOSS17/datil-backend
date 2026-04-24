@@ -47,6 +47,12 @@ type Config struct {
 	// subscription URLs for the ICS feed handler. Must not carry a trailing
 	// slash. Falls back to http://localhost:<PORT> in development.
 	APIPublicBaseURL string
+
+	// MigrationsPath is the filesystem path passed to golang-migrate at
+	// startup. Defaults to "migrations" (relative to the binary's WORKDIR,
+	// which is /app in the container). Override with MIGRATIONS_PATH when
+	// running the binary from somewhere else.
+	MigrationsPath string
 }
 
 func Load() (*Config, error) {
@@ -108,6 +114,8 @@ func Load() (*Config, error) {
 		GoogleOAuthRedirectURL:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
 		FrontendBaseURL:         os.Getenv("FRONTEND_BASE_URL"),
 		APIPublicBaseURL:        strings.TrimRight(os.Getenv("API_PUBLIC_BASE_URL"), "/"),
+
+		MigrationsPath: getEnvOrDefault("MIGRATIONS_PATH", "migrations"),
 	}
 
 	if cfg.APIPublicBaseURL == "" {

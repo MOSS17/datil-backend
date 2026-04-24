@@ -29,6 +29,13 @@ func New(
 	// Global middleware
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
+	// chimw.Logger emits method, scheme, host, RequestURI, remote addr,
+	// status, bytes, and elapsed — NOT request/response headers or bodies.
+	// Authorization / Cookie / etc. are not logged. Verified against
+	// go-chi/chi/v5 v5.2.5 middleware/logger.go (defaultLogEntry). The one
+	// thing that does land in logs is RequestURI, so be deliberate about
+	// putting secrets in path or query string (the ICS feed token is the
+	// known exception — tracked in PHASES "Deferred work").
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(60 * time.Second))
