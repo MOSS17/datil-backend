@@ -15,6 +15,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) | **Merged** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 2.1 | Categories CRUD (services depend on it) | **Merged** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **Merged** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 3 | Public booking flow + availability algorithm | **Merged** | [#8](https://github.com/MOSS17/datil-backend/pull/8) | **Merged** | [frontend#5](https://github.com/MOSS17/datil-frontend/pull/5) |
+| 3.2 | Business timezone — column + threading through availability | Not started | — | Not started (signup form may auto-detect browser tz) | — |
 | 4 | Owner dashboard + appointments CRUD | Not started | — | Not started (still mocked: `/dashboard`, `/appointments/*`) | — |
 | 5 | Schedule config (workdays + personal time) | Not started | — | Not started (still mocked: `/schedule/*`) | — |
 | 6 | Calendar integration (Google + Apple OAuth, two-way sync) | Not started | — | Not started (still mocked: `/calendar/*`) | — |
@@ -370,24 +371,57 @@ Branch `wire-phase-3` off frontend `main`. The backend PR must be merged first s
 
 ---
 
+## Phase 3.2 — Business timezone
+
+**Goal**: per-business timezone, so availability, dashboard "today"/"week"/"month", and schedule config all compute in the owner's wall-clock instead of the server's `time.Local`. Runs before Phase 4 so dashboard can assume a real `*time.Location` is available.
+
+Promoted out of "Deferred work" after the decision to tighten this up before owner-side phases ship.
+
+### Migration
+`migrations/0000NN_add_businesses_timezone.up.sql`:
+```sql
+ALTER TABLE businesses
+    ADD COLUMN timezone VARCHAR(64) NOT NULL DEFAULT 'America/Mexico_City';
+```
+Down: drop column. Default chosen for the Mexico-targeted MVP; signup can override (see Frontend cutover).
+
+### Model
+- `model.Business` grows a `Timezone string` field (`json:"timezone"`).
+- `scanBusiness` reads the new column; `businessRepo.Create` accepts it (default handled at the DB level when blank).
+
+### Threading
+- `BookingHandler.GetAvailability` — currently parses `date` in `time.Local`, calls `ComputeSlots` with `dayStart` in `time.Local`. Replace with: `loc, err := time.LoadLocation(business.Timezone)`; `time.ParseInLocation("2006-01-02", dateStr, loc)`; pass that `dayStart` to `ComputeSlots`.
+- `BookingHandler.Reserve` — `dayStart`/`dayEnd` for the `FOR UPDATE` range scan are derived from the parsed `startTime`. `startTime` already round-trips as RFC3339 with its offset, so this keeps working without extra threading. Low risk.
+- `ScheduleRepository.ListPersonalTimeOverlapping` — currently formats `date` with `date.Format("2006-01-02")` which is location-sensitive. Pass the `*time.Location` through from the handler so the YYYY-MM-DD bucket matches the business's day.
+- Phase 4 consumers: `DashboardRepository` queries that compute "today / this week / this month" need to use the business's `*time.Location` to align the SQL `date_trunc` to the right midnight. Document the pattern in phase 4's repo sketch.
+
+### Frontend cutover (separate `wire-phase-3.2` PR)
+1. Signup form: auto-detect via `Intl.DateTimeFormat().resolvedOptions().timeZone` and include a `timezone` field in the signup request. No UI friction — user sees nothing. Server accepts or rejects (validate against `time.LoadLocation`); server-detected fallback is fine if the client skips it.
+2. Business settings page (dashboard → configuración): add a read-only "Zona horaria" display. Editing comes later if users need it; the signup default covers the common case.
+3. Smoke: sign up with TZ forced to `Europe/Madrid` (DevTools → sensors → Location override), book an availability slot, confirm `TimeSlot.Start` serializes with a Madrid offset.
+
+### Ship gate
+- `go test ./internal/booking/...` still green (ComputeSlots is unchanged — only inputs shift).
+- A fresh signup persists the browser's tz (or the Mexico default).
+- `curl /api/v1/book/<slug>/availability?date=YYYY-MM-DD` with the server in UTC returns slots anchored to the business's tz, not server tz.
+- Deferred-work section no longer lists per-business timezone (it's shipped).
+
+---
+
 ## Phase 4 — Owner dashboard + appointments CRUD
 
 **Goal**: flip the authenticated owner-side off mocks. After this phase, signing in loads real appointment data and the owner can manage existing appointments.
 
-### Scope decision to resolve first
-Frontend has `APPOINTMENT_STATUS = pending | confirmed | cancelled | completed` (`src/lib/constants.ts`); backend `appointments` table has no status column. Either:
-- **(a)** Add a `status` column via migration with default `'confirmed'` and backfill existing rows — owner gets a real state machine.
-- **(b)** Drop the status concept entirely for now — every created appointment is implicitly live; cancellation = `DELETE`.
+**Assumes phase 3.2 has landed**: every `users.business_id` has an associated `businesses.timezone` to anchor date math on.
 
-Pick (a) if you need "cancelled but kept for records"; pick (b) if that's a future feature. **This PR's author decides before starting; don't wait for the roadmap.**
-
-### Migration (only if picking option a)
+### Migration
 `migrations/0000NN_add_appointments_status.up.sql`:
 ```sql
 ALTER TABLE appointments ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'confirmed';
 ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
     CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed'));
 ```
+Default `'confirmed'` backfills existing rows (they all came from Reserve, where the appointment is live-on-creation). Frontend's `APPOINTMENT_STATUS = pending | confirmed | cancelled | completed` already exists in `src/lib/constants.ts`; this aligns the backend.
 
 ### Repositories
 - `AppointmentRepository` — already mostly filled in phase 3. Verify `List`, `GetByID`, `Update`, `Delete` still work; only `Create` had the tx-required signature from the booking flow, but owner-side manual-create can use a separate tx-less `CreateForOwner` helper or just open its own tx inline.
@@ -522,19 +556,7 @@ All three handlers are currently stubs. Whoever picks this up rewrites them comp
 
 Items we've hit and consciously pushed off. Revisit when someone needs them, not before.
 
-### Per-business timezone (availability rendering)
-
-**Problem**: `internal/booking/availability.go::ComputeSlots` emits each `TimeSlot.Start` in the server's `time.Local`. Go's `time.Local` is derived from the container's `TZ` env var — if `TZ` is unset (the Docker default), `time.Local` is UTC. A Friday 9am–5pm workday configured in the DB then serializes as `09:00:00Z`, which a customer in America/Mexico_City sees rendered as "9 AM" (the frontend slices `HH:MM` off the string) but actually falls at 2 AM their time. Reservations still round-trip correctly because the same offset is sent back on submit — it's a display-layer lie, not a data bug.
-
-**Workaround for now**: set `TZ=America/Mexico_City` on the Go container at deploy time so `time.Local` matches business reality. Good enough for a single-region MVP. Document the var in the production runbook env table when adding it.
-
-**Real fix (deferred)**:
-1. Add `businesses.timezone` column (IANA name, e.g. `America/Mexico_City`), defaulted at signup (infer from browser or ask).
-2. Thread a `*time.Location` through `BookingHandler.GetAvailability` → `ComputeSlots`. Availability is then computed in each business's own tz, independent of server tz.
-3. Update `work_hours`/`personal_time` consumers to treat their TIME columns as wall-clock in that tz.
-4. Frontend stops needing to trust the offset in the response — it can render the timezone alongside the slot.
-
-**Trigger to actually do it**: second business onboarded in a different timezone from the first, or a customer-support ticket about wrong times.
+*(Per-business timezone was originally deferred here; promoted to Phase 3.2 once owner-side phases needed real tz math.)*
 
 ---
 
