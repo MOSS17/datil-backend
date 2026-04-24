@@ -109,7 +109,7 @@ func (r *dashboardRepo) GetDashboard(ctx context.Context, userID, _ uuid.UUID, l
 		   FROM appointments
 		  WHERE user_id = $1
 		    AND seen_at IS NULL
-		    AND created_at >= $2 - INTERVAL '5 days'
+		    AND created_at >= ($2::timestamptz - INTERVAL '5 days')
 		  ORDER BY created_at DESC
 		  LIMIT $3`,
 		userID, now, latestLimit,
