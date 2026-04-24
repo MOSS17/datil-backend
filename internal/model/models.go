@@ -7,17 +7,18 @@ import (
 )
 
 type Business struct {
-	ID               uuid.UUID  `json:"id"`
-	Name             string     `json:"name"`
-	Location         *string    `json:"location"`
-	Description      *string    `json:"description"`
-	LogoURL          *string    `json:"logo_url"`
-	URL              string     `json:"url"`
-	BeneficiaryClabe *string    `json:"beneficiary_clabe"`
-	BankName         *string    `json:"bank_name"`
-	BeneficiaryName  *string    `json:"beneficiary_name"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	Location         *string   `json:"location"`
+	Description      *string   `json:"description"`
+	LogoURL          *string   `json:"logo_url"`
+	URL              string    `json:"url"`
+	Timezone         string    `json:"timezone"`
+	BeneficiaryClabe *string   `json:"beneficiary_clabe"`
+	BankName         *string   `json:"bank_name"`
+	BeneficiaryName  *string   `json:"beneficiary_name"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type User struct {
@@ -131,6 +132,11 @@ type SignupRequest struct {
 	BusinessName string `json:"business_name"`
 	Email        string `json:"email"`
 	Password     string `json:"password"`
+	// Timezone is optional; frontend auto-detects via
+	// Intl.DateTimeFormat().resolvedOptions().timeZone and sends an IANA
+	// name. If omitted or invalid, repository.DefaultBusinessTimezone
+	// applies. Validated in the signup handler via time.LoadLocation.
+	Timezone string `json:"timezone,omitempty"`
 }
 
 type LoginRequest struct {

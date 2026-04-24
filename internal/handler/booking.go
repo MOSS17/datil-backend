@@ -134,7 +134,8 @@ func (h *BookingHandler) GetAvailability(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusBadRequest, "date requerido (YYYY-MM-DD)", nil)
 		return
 	}
-	date, err := time.ParseInLocation("2006-01-02", dateStr, time.Local)
+	loc := businessLocation(business.Timezone)
+	date, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "date inválido (YYYY-MM-DD)", nil)
 		return
@@ -421,6 +422,21 @@ func parseUUIDList(s string) ([]uuid.UUID, error) {
 		out = append(out, id)
 	}
 	return out, nil
+}
+
+// businessLocation resolves a business's IANA timezone string to a
+// *time.Location. Malformed or missing strings fall back to UTC with a log;
+// the DB default guarantees a valid value for new signups, but legacy rows
+// (or a bad Intl.DateTimeFormat detection) shouldn't 500 the whole flow.
+func businessLocation(tz string) *time.Location {
+	if tz == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // pickWorkday returns the Workday matching weekday (0=Sunday..6=Saturday) or
