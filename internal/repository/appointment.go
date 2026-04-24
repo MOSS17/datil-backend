@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mossandoval/datil-api/internal/model"
 )
@@ -17,6 +18,14 @@ type AppointmentRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Appointment, error)
 	Create(ctx context.Context, tx pgx.Tx, a *model.Appointment, services []model.AppointmentService) error
 	Update(ctx context.Context, id uuid.UUID, a *model.Appointment) error
+	// UpdateTx is like Update but runs inside the caller's transaction.
+	// Use when the update needs to be atomic with other writes (e.g.
+	// replacing appointment_services rows).
+	UpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, a *model.Appointment) error
+	// ReplaceServices wipes and re-inserts the appointment_services rows for
+	// the given appointment. Must run inside a transaction so the delete and
+	// the inserts cannot observe a partially-updated join table.
+	ReplaceServices(ctx context.Context, tx pgx.Tx, appointmentID uuid.UUID, services []model.AppointmentService) error
 	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
 	UpdatePaymentProof(ctx context.Context, id uuid.UUID, url string) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -137,7 +146,21 @@ func (r *appointmentRepo) Create(ctx context.Context, tx pgx.Tx, a *model.Appoin
 // false-positive bumps just cause calendar clients to re-sync, which is
 // cheap and correct.
 func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.Appointment) error {
-	cmd, err := r.pool.Exec(ctx,
+	return execUpdate(ctx, r.pool, id, a)
+}
+
+func (r *appointmentRepo) UpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, a *model.Appointment) error {
+	return execUpdate(ctx, tx, id, a)
+}
+
+// execer is the subset of pgxpool.Pool / pgx.Tx we need for UPDATE/DELETE/INSERT;
+// lets Update share SQL with UpdateTx without duplicating the query.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+func execUpdate(ctx context.Context, e execer, id uuid.UUID, a *model.Appointment) error {
+	cmd, err := e.Exec(ctx,
 		`UPDATE appointments
 		    SET customer_name = $1, customer_email = $2, start_time = $3, end_time = $4, total = $5,
 		        customer_phone = $6, advance_payment_image_url = $7,
@@ -150,6 +173,29 @@ func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.App
 	}
 	if cmd.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// ReplaceServices wipes the existing appointment_services rows for the given
+// appointment and inserts the provided set. Caller is responsible for opening
+// and committing the transaction.
+func (r *appointmentRepo) ReplaceServices(ctx context.Context, tx pgx.Tx, appointmentID uuid.UUID, services []model.AppointmentService) error {
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM appointment_services WHERE appointment_id = $1`,
+		appointmentID,
+	); err != nil {
+		return fmt.Errorf("clearing appointment services: %w", err)
+	}
+	for i := range services {
+		services[i].AppointmentID = appointmentID
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO appointment_services (appointment_id, service_id, price, duration)
+			 VALUES ($1, $2, $3, $4)`,
+			appointmentID, services[i].ServiceID, services[i].Price, services[i].Duration,
+		); err != nil {
+			return fmt.Errorf("inserting appointment_service: %w", err)
+		}
 	}
 	return nil
 }

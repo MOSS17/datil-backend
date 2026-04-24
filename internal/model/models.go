@@ -227,12 +227,13 @@ type CreateAppointmentRequest struct {
 }
 
 type UpdateAppointmentRequest struct {
-	CustomerName  string    `json:"customer_name"`
-	CustomerEmail *string   `json:"customer_email"`
-	CustomerPhone string    `json:"customer_phone"`
-	StartTime     time.Time `json:"start_time"`
-	EndTime       time.Time `json:"end_time"`
-	Total         float64   `json:"total"`
+	CustomerName  string      `json:"customer_name"`
+	CustomerEmail *string     `json:"customer_email"`
+	CustomerPhone string      `json:"customer_phone"`
+	StartTime     time.Time   `json:"start_time"`
+	EndTime       time.Time   `json:"end_time"`
+	Total         float64     `json:"total"`
+	ServiceIDs    []uuid.UUID `json:"service_ids"`
 }
 
 type UpdateAppointmentStatusRequest struct {

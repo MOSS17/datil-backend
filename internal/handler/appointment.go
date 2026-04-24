@@ -226,10 +226,16 @@ func (h *AppointmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	WriteJSON(w, http.StatusCreated, appt)
 }
 
-// Update edits customer/time/total fields. Status is untouched (has its own
-// endpoint); advance_payment_image_url is preserved.
+// Update edits customer/time/total fields and the appointment's service set.
+// Status is untouched (has its own endpoint); advance_payment_image_url is
+// preserved. Services are fully replaced: the client sends the complete
+// post-edit set of service_ids, we wipe the existing appointment_services
+// rows and insert the new ones. Total is recomputed server-side from the
+// catalog prices — the request's `total` field is accepted for schema
+// compatibility but ignored.
 // PUT /appointments/{id}
 func (h *AppointmentHandler) Update(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	id, ok := parseAppointmentID(w, r)
 	if !ok {
 		return
@@ -251,15 +257,15 @@ func (h *AppointmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.StartTime.IsZero() || req.EndTime.IsZero() || !req.EndTime.After(req.StartTime) {
 		fields["end_time"] = "debe ser posterior a start_time"
 	}
-	if req.Total < 0 {
-		fields["total"] = "no puede ser negativo"
+	if len(req.ServiceIDs) == 0 {
+		fields["service_ids"] = "requerido"
 	}
 	if len(fields) > 0 {
 		WriteError(w, http.StatusBadRequest, "datos inválidos", fields)
 		return
 	}
 
-	appt, status, err := h.loadOwned(r.Context(), id)
+	appt, status, err := h.loadOwned(ctx, id)
 	if err != nil {
 		WriteError(w, http.StatusInternalServerError, "could not load appointment", nil)
 		return
@@ -269,14 +275,27 @@ func (h *AppointmentHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	businessID := middleware.BusinessIDFromContext(ctx)
+	apptServices, _, total, _, err := resolveBookableServices(ctx, h.serviceRepo, businessID, req.ServiceIDs, nil)
+	if err != nil {
+		writeBookableServiceError(w, err)
+		return
+	}
+
 	appt.CustomerName = req.CustomerName
 	appt.CustomerEmail = req.CustomerEmail
 	appt.CustomerPhone = req.CustomerPhone
 	appt.StartTime = req.StartTime
 	appt.EndTime = req.EndTime
-	appt.Total = req.Total
+	appt.Total = total
 
-	if err := h.repo.Update(r.Context(), id, appt); err != nil {
+	err = repository.WithTransaction(ctx, h.pool, func(tx pgx.Tx) error {
+		if err := h.repo.UpdateTx(ctx, tx, id, appt); err != nil {
+			return err
+		}
+		return h.repo.ReplaceServices(ctx, tx, id, apptServices)
+	})
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			WriteError(w, http.StatusNotFound, "cita no encontrada", nil)
 			return
