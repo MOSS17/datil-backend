@@ -54,17 +54,17 @@ func main() {
 	appointmentRepo := repository.NewAppointmentRepository(pool)
 	scheduleRepo := repository.NewScheduleRepository(pool)
 	calendarRepo := repository.NewCalendarRepository(pool)
-	dashboardRepo := repository.NewDashboardRepository(pool)
+	dashboardRepo := repository.NewDashboardRepository(pool, appointmentRepo)
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(userRepo, businessRepo, refreshRepo, pool, cfg)
 	businessHandler := handler.NewBusinessHandler(businessRepo, uploader)
 	categoryHandler := handler.NewCategoryHandler(categoryRepo)
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
-	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, notifier)
+	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, businessRepo, serviceRepo, uploader, pool)
 	scheduleHandler := handler.NewScheduleHandler(scheduleRepo)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
-	dashboardHandler := handler.NewDashboardHandler(dashboardRepo)
+	dashboardHandler := handler.NewDashboardHandler(dashboardRepo, businessRepo)
 	bookingHandler := handler.NewBookingHandler(
 		businessRepo, userRepo, categoryRepo, serviceRepo,
 		appointmentRepo, scheduleRepo, uploader, notifier, pool,

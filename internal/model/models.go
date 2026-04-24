@@ -71,6 +71,7 @@ type Appointment struct {
 	Total                  float64              `json:"total"`
 	CustomerPhone          string               `json:"customer_phone"`
 	AdvancePaymentImageURL *string              `json:"advance_payment_image_url"`
+	Status                 string               `json:"status"`
 	CreatedAt              time.Time            `json:"created_at"`
 	UpdatedAt              time.Time            `json:"updated_at"`
 	Services               []AppointmentService `json:"services,omitempty"`
@@ -210,4 +211,26 @@ type DashboardData struct {
 	MonthlyIncome float64       `json:"monthly_income"`
 	Upcoming      []Appointment `json:"upcoming"`
 	Latest        []Appointment `json:"latest"`
+}
+
+type CreateAppointmentRequest struct {
+	CustomerName  string      `json:"customer_name"`
+	CustomerPhone string      `json:"customer_phone"`
+	CustomerEmail *string     `json:"customer_email"`
+	StartTime     time.Time   `json:"start_time"`
+	ServiceIDs    []uuid.UUID `json:"service_ids"`
+	ExtraIDs      []uuid.UUID `json:"extra_ids"`
+}
+
+type UpdateAppointmentRequest struct {
+	CustomerName  string    `json:"customer_name"`
+	CustomerEmail *string   `json:"customer_email"`
+	CustomerPhone string    `json:"customer_phone"`
+	StartTime     time.Time `json:"start_time"`
+	EndTime       time.Time `json:"end_time"`
+	Total         float64   `json:"total"`
+}
+
+type UpdateAppointmentStatusRequest struct {
+	Status string `json:"status"`
 }
