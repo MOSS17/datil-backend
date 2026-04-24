@@ -100,6 +100,8 @@ func New(
 					r.Get("/", appointmentHandler.Get)
 					r.Put("/", appointmentHandler.Update)
 					r.Delete("/", appointmentHandler.Delete)
+					r.Put("/status", appointmentHandler.UpdateStatus)
+					r.Post("/payment-proof", appointmentHandler.UpdatePaymentProof)
 				})
 			})
 

@@ -17,12 +17,18 @@ type AppointmentRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Appointment, error)
 	Create(ctx context.Context, tx pgx.Tx, a *model.Appointment, services []model.AppointmentService) error
 	Update(ctx context.Context, id uuid.UUID, a *model.Appointment) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status string) error
+	UpdatePaymentProof(ctx context.Context, id uuid.UUID, url string) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	ListByDateRange(ctx context.Context, businessID uuid.UUID, from, to time.Time) ([]model.Appointment, error)
 	// ListByDateRangeForUpdate is like ListByDateRange but locks the matching
 	// rows FOR UPDATE inside the calling transaction. Use it as the race
 	// guard inside Reserve so two concurrent reservations can't both succeed.
 	ListByDateRangeForUpdate(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, from, to time.Time) ([]model.Appointment, error)
+	// ListServicesFor returns the appointment_services rows for the given
+	// appointment IDs, keyed by appointment_id. Empty input returns an empty
+	// map without a query round-trip.
+	ListServicesFor(ctx context.Context, appointmentIDs []uuid.UUID) (map[uuid.UUID][]model.AppointmentService, error)
 }
 
 type appointmentRepo struct {
@@ -33,13 +39,13 @@ func NewAppointmentRepository(pool *pgxpool.Pool) AppointmentRepository {
 	return &appointmentRepo{pool: pool}
 }
 
-const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, created_at, updated_at"
+const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, created_at, updated_at"
 
 func scanAppointment(row pgx.Row) (*model.Appointment, error) {
 	var a model.Appointment
 	if err := row.Scan(
 		&a.ID, &a.UserID, &a.CustomerName, &a.CustomerEmail, &a.StartTime, &a.EndTime,
-		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL,
+		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL, &a.Status,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -88,15 +94,20 @@ func (r *appointmentRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.App
 // Create inserts the appointment and its services atomically. Caller must
 // supply an open transaction so the booking-flow race guard
 // (ListByDateRangeForUpdate) and the insert share a single Postgres tx.
+// If a.Status is empty the DB default ('confirmed') applies.
 func (r *appointmentRepo) Create(ctx context.Context, tx pgx.Tx, a *model.Appointment, services []model.AppointmentService) error {
+	status := a.Status
+	if status == "" {
+		status = "confirmed"
+	}
 	row := tx.QueryRow(ctx,
 		`INSERT INTO appointments
-		    (user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id, created_at, updated_at`,
-		a.UserID, a.CustomerName, a.CustomerEmail, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL,
+		    (user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 RETURNING id, status, created_at, updated_at`,
+		a.UserID, a.CustomerName, a.CustomerEmail, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL, status,
 	)
-	if err := row.Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt); err != nil {
+	if err := row.Scan(&a.ID, &a.Status, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		return fmt.Errorf("inserting appointment: %w", err)
 	}
 
@@ -132,6 +143,34 @@ func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.App
 	return nil
 }
 
+func (r *appointmentRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2`,
+		status, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating appointment status: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *appointmentRepo) UpdatePaymentProof(ctx context.Context, id uuid.UUID, url string) error {
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE appointments SET advance_payment_image_url = $1, updated_at = NOW() WHERE id = $2`,
+		url, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating appointment payment proof: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *appointmentRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	cmd, err := r.pool.Exec(ctx, `DELETE FROM appointments WHERE id = $1`, id)
 	if err != nil {
@@ -141,6 +180,34 @@ func (r *appointmentRepo) Delete(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *appointmentRepo) ListServicesFor(ctx context.Context, appointmentIDs []uuid.UUID) (map[uuid.UUID][]model.AppointmentService, error) {
+	out := make(map[uuid.UUID][]model.AppointmentService, len(appointmentIDs))
+	if len(appointmentIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT appointment_id, service_id, price, duration
+		   FROM appointment_services
+		  WHERE appointment_id = ANY($1)`,
+		appointmentIDs,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing appointment services: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s model.AppointmentService
+		if err := rows.Scan(&s.AppointmentID, &s.ServiceID, &s.Price, &s.Duration); err != nil {
+			return nil, fmt.Errorf("scanning appointment service: %w", err)
+		}
+		out[s.AppointmentID] = append(out[s.AppointmentID], s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating appointment services: %w", err)
+	}
+	return out, nil
 }
 
 const appointmentByBusinessSQL = `SELECT ` + appointmentColumns + `

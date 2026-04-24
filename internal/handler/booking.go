@@ -56,15 +56,7 @@ func NewBookingHandler(
 	}
 }
 
-const (
-	maxReserveBytes      = int64(6 << 20)
-	maxReserveMemory     = int64(2 << 20)
-	availabilitySlotStep = 15
-)
-
-var allowedPaymentProofTypes = []string{
-	"image/png", "image/jpeg", "image/webp", "application/pdf",
-}
+const availabilitySlotStep = 15
 
 // GetBusiness returns the public-facing business + its categories by slug.
 // GET /book/{url}
@@ -134,7 +126,7 @@ func (h *BookingHandler) GetAvailability(w http.ResponseWriter, r *http.Request)
 		WriteError(w, http.StatusBadRequest, "date requerido (YYYY-MM-DD)", nil)
 		return
 	}
-	loc := businessLocation(business.Timezone)
+	loc := model.BusinessLocation(business.Timezone)
 	date, err := time.ParseInLocation("2006-01-02", dateStr, loc)
 	if err != nil {
 		WriteError(w, http.StatusBadRequest, "date inválido (YYYY-MM-DD)", nil)
@@ -258,8 +250,9 @@ func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 	// Resolve services up front so we can validate ownership, sum the price/
 	// duration, build the appointment_services rows, and keep the names
 	// around for the WhatsApp message body.
-	apptServices, serviceNames, total, totalDuration, ok := h.resolveBookableServices(w, r.Context(), business.ID, serviceIDs, extraIDs)
-	if !ok {
+	apptServices, serviceNames, total, totalDuration, err := resolveBookableServices(r.Context(), h.serviceRepo, business.ID, serviceIDs, extraIDs)
+	if err != nil {
+		writeBookableServiceError(w, err)
 		return
 	}
 
@@ -352,58 +345,6 @@ func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 
 var errSlotTaken = errors.New("slot taken")
 
-// resolveBookableServices loads each requested service, verifies it belongs
-// to the business, sums price + duration, and returns the appointment_services
-// rows ready to insert. Writes the appropriate error response on failure.
-func (h *BookingHandler) resolveBookableServices(
-	w http.ResponseWriter,
-	ctx context.Context,
-	businessID uuid.UUID,
-	serviceIDs, extraIDs []uuid.UUID,
-) ([]model.AppointmentService, []string, float64, int, bool) {
-	rows := make([]model.AppointmentService, 0, len(serviceIDs)+len(extraIDs))
-	names := make([]string, 0, len(serviceIDs)+len(extraIDs))
-	var total float64
-	var duration int
-
-	resolve := func(id uuid.UUID, requireExtra bool) bool {
-		s, err := h.serviceRepo.GetByID(ctx, id)
-		if err != nil {
-			WriteError(w, http.StatusBadRequest, "service_id inválido", nil)
-			return false
-		}
-		if s.BusinessID != businessID {
-			WriteError(w, http.StatusBadRequest, "service_id no pertenece a este negocio", nil)
-			return false
-		}
-		if requireExtra && !s.IsExtra {
-			WriteError(w, http.StatusBadRequest, "extra_id no es un servicio extra", nil)
-			return false
-		}
-		rows = append(rows, model.AppointmentService{
-			ServiceID: s.ID,
-			Price:     s.MinPrice,
-			Duration:  s.Duration,
-		})
-		names = append(names, s.Name)
-		total += s.MinPrice
-		duration += s.Duration
-		return true
-	}
-
-	for _, id := range serviceIDs {
-		if !resolve(id, false) {
-			return nil, nil, 0, 0, false
-		}
-	}
-	for _, id := range extraIDs {
-		if !resolve(id, true) {
-			return nil, nil, 0, 0, false
-		}
-	}
-	return rows, names, total, duration, true
-}
-
 func parseUUIDList(s string) ([]uuid.UUID, error) {
 	if s == "" {
 		return nil, nil
@@ -422,21 +363,6 @@ func parseUUIDList(s string) ([]uuid.UUID, error) {
 		out = append(out, id)
 	}
 	return out, nil
-}
-
-// businessLocation resolves a business's IANA timezone string to a
-// *time.Location. Malformed or missing strings fall back to UTC with a log;
-// the DB default guarantees a valid value for new signups, but legacy rows
-// (or a bad Intl.DateTimeFormat detection) shouldn't 500 the whole flow.
-func businessLocation(tz string) *time.Location {
-	if tz == "" {
-		return time.UTC
-	}
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return time.UTC
-	}
-	return loc
 }
 
 // pickWorkday returns the Workday matching weekday (0=Sunday..6=Saturday) or
