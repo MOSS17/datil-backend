@@ -180,6 +180,16 @@ type CategoryRequest struct {
 	AllowMultiple bool   `json:"allow_multiple"`
 }
 
+type BookingPageResponse struct {
+	Business   Business   `json:"business"`
+	Categories []Category `json:"categories"`
+}
+
+type BookingService struct {
+	Service
+	Extras []Service `json:"extras"`
+}
+
 type BookingDetails struct {
 	CustomerName string    `json:"customer_name"`
 	BusinessName string    `json:"business_name"`

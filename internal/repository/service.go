@@ -168,7 +168,18 @@ func (r *serviceRepo) UnlinkExtra(ctx context.Context, serviceID, extraID uuid.U
 }
 
 func (r *serviceRepo) ListByBusinessURL(ctx context.Context, url string) ([]model.Service, error) {
-	return nil, errors.New("not implemented")
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+prefixedServiceColumns("s")+`
+		   FROM services s
+		   JOIN businesses b ON b.id = s.business_id
+		  WHERE b.url = $1 AND s.is_active = true
+		  ORDER BY s.created_at`,
+		url,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing services by business url: %w", err)
+	}
+	return r.collectServices(rows)
 }
 
 // prefixedServiceColumns returns the service column list aliased to alias.
