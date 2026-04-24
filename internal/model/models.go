@@ -72,6 +72,8 @@ type Appointment struct {
 	CustomerPhone          string               `json:"customer_phone"`
 	AdvancePaymentImageURL *string              `json:"advance_payment_image_url"`
 	Status                 string               `json:"status"`
+	GoogleEventID          *string              `json:"google_event_id,omitempty"`
+	AppleEventUID          *string              `json:"apple_event_uid,omitempty"`
 	CreatedAt              time.Time            `json:"created_at"`
 	UpdatedAt              time.Time            `json:"updated_at"`
 	Services               []AppointmentService `json:"services,omitempty"`
@@ -120,6 +122,7 @@ type CalendarIntegration struct {
 	Provider     string     `json:"provider"`
 	AccessToken  string     `json:"-"`
 	RefreshToken *string    `json:"-"`
+	AccountEmail *string    `json:"account_email,omitempty"`
 	IsActive     bool       `json:"is_active"`
 	ExpiresAt    *time.Time `json:"expires_at"`
 	CreatedAt    time.Time  `json:"created_at"`

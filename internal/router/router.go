@@ -62,6 +62,11 @@ func New(
 			r.With(middleware.PerIP(5, time.Minute)).Post("/reserve", bookingHandler.Reserve)
 		})
 
+		// OAuth callback is public: the browser lands here via Google's
+		// redirect without a Bearer header. CSRF + identity come from the
+		// signed `state` parameter; see calendar.StateSigner.
+		r.Get("/calendar/{provider}/callback", calendarHandler.Callback)
+
 		// Authenticated routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth(cfg.JWTSecret))
@@ -117,7 +122,6 @@ func New(
 
 			r.Route("/calendar/{provider}", func(r chi.Router) {
 				r.Post("/connect", calendarHandler.Connect)
-				r.Get("/callback", calendarHandler.Callback)
 				r.Delete("/", calendarHandler.Disconnect)
 			})
 

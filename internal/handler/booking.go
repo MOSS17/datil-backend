@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mossandoval/datil-api/internal/booking"
+	"github.com/mossandoval/datil-api/internal/calendar"
 	"github.com/mossandoval/datil-api/internal/model"
 	"github.com/mossandoval/datil-api/internal/notification"
 	"github.com/mossandoval/datil-api/internal/repository"
@@ -27,8 +28,10 @@ type BookingHandler struct {
 	serviceRepo     repository.ServiceRepository
 	appointmentRepo repository.AppointmentRepository
 	scheduleRepo    repository.ScheduleRepository
+	calendarRepo    repository.CalendarRepository
 	uploader        storage.Uploader
 	notifier        notification.Notifier
+	calSyncer       calendar.Syncer
 	pool            *pgxpool.Pool
 }
 
@@ -39,8 +42,10 @@ func NewBookingHandler(
 	serviceRepo repository.ServiceRepository,
 	appointmentRepo repository.AppointmentRepository,
 	scheduleRepo repository.ScheduleRepository,
+	calendarRepo repository.CalendarRepository,
 	uploader storage.Uploader,
 	notifier notification.Notifier,
+	calSyncer calendar.Syncer,
 	pool *pgxpool.Pool,
 ) *BookingHandler {
 	return &BookingHandler{
@@ -50,8 +55,10 @@ func NewBookingHandler(
 		serviceRepo:     serviceRepo,
 		appointmentRepo: appointmentRepo,
 		scheduleRepo:    scheduleRepo,
+		calendarRepo:    calendarRepo,
 		uploader:        uploader,
 		notifier:        notifier,
+		calSyncer:       calSyncer,
 		pool:            pool,
 	}
 }
@@ -340,7 +347,53 @@ func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 		}
 	}(customerPhone, business.Name, customerName, startTime, serviceNames)
 
+	// Calendar push: mirror the notifier pattern — best-effort, fire-and-
+	// forget so a provider outage can't rollback the booking. One outer
+	// goroutine lists the owner's active integrations; each integration
+	// pushes in its own goroutine so Apple + Google run concurrently.
+	if h.calSyncer != nil {
+		go h.pushAppointmentToCalendars(*appt, business, customerName, customerPhone, customerEmail, serviceNames)
+	}
+
 	WriteJSON(w, http.StatusOK, appt)
+}
+
+func (h *BookingHandler) pushAppointmentToCalendars(appt model.Appointment, business *model.Business, customerName, customerPhone, customerEmail string, serviceNames []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	integrations, err := h.calendarRepo.ListByUser(ctx, appt.UserID)
+	if err != nil {
+		log.Printf("list calendar integrations: %v", err)
+		return
+	}
+	if len(integrations) == 0 {
+		return
+	}
+
+	input := calendar.EventInput{
+		BusinessName:  business.Name,
+		CustomerName:  customerName,
+		CustomerPhone: customerPhone,
+		CustomerEmail: customerEmail,
+		Services:      serviceNames,
+		Start:         appt.StartTime,
+		End:           appt.EndTime,
+		Timezone:      business.Timezone,
+	}
+	for _, ci := range integrations {
+		externalID, err := h.calSyncer.PushEvent(ctx, ci, input)
+		if err != nil {
+			log.Printf("calendar push (%s): %v", ci.Provider, err)
+			continue
+		}
+		if externalID == "" {
+			continue
+		}
+		if err := h.appointmentRepo.UpdateExternalEventID(ctx, appt.ID, ci.Provider, externalID); err != nil {
+			log.Printf("stamp %s event id: %v", ci.Provider, err)
+		}
+	}
 }
 
 var errSlotTaken = errors.New("slot taken")

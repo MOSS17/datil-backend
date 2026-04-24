@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mossandoval/datil-api/internal/calendar"
 	"github.com/mossandoval/datil-api/internal/config"
 	"github.com/mossandoval/datil-api/internal/handler"
 	"github.com/mossandoval/datil-api/internal/notification"
@@ -56,6 +57,21 @@ func main() {
 	calendarRepo := repository.NewCalendarRepository(pool)
 	dashboardRepo := repository.NewDashboardRepository(pool, appointmentRepo)
 
+	// Calendar syncer: google depends on OAuth creds (degrades to noop if
+	// unset); apple is always available because its credentials are
+	// per-user. DispatchingSyncer routes by integration.Provider.
+	googleSyncer := calendar.NewGoogleSyncer(cfg.GoogleOAuthClientID, cfg.GoogleOAuthClientSecret, cfg.GoogleOAuthRedirectURL, calendarRepo)
+	appleSyncer := calendar.NewAppleSyncer()
+	var googleForDispatch calendar.Syncer = googleSyncer
+	if googleSyncer == nil {
+		googleForDispatch = calendar.NoopSyncer{}
+	}
+	calSyncer := calendar.DispatchingSyncer{
+		Google: googleForDispatch,
+		Apple:  appleSyncer,
+	}
+	stateSigner := calendar.NewStateSigner(cfg.JWTSecret)
+
 	// Handlers
 	authHandler := handler.NewAuthHandler(userRepo, businessRepo, refreshRepo, pool, cfg)
 	businessHandler := handler.NewBusinessHandler(businessRepo, uploader)
@@ -63,11 +79,11 @@ func main() {
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
 	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, businessRepo, serviceRepo, uploader, pool)
 	scheduleHandler := handler.NewScheduleHandler(scheduleRepo)
-	calendarHandler := handler.NewCalendarHandler(calendarRepo)
+	calendarHandler := handler.NewCalendarHandler(cfg, calendarRepo, googleSyncer, appleSyncer, stateSigner)
 	dashboardHandler := handler.NewDashboardHandler(dashboardRepo, businessRepo)
 	bookingHandler := handler.NewBookingHandler(
 		businessRepo, userRepo, categoryRepo, serviceRepo,
-		appointmentRepo, scheduleRepo, uploader, notifier, pool,
+		appointmentRepo, scheduleRepo, calendarRepo, uploader, notifier, calSyncer, pool,
 	)
 
 	// Router

@@ -29,6 +29,10 @@ type AppointmentRepository interface {
 	// appointment IDs, keyed by appointment_id. Empty input returns an empty
 	// map without a query round-trip.
 	ListServicesFor(ctx context.Context, appointmentIDs []uuid.UUID) (map[uuid.UUID][]model.AppointmentService, error)
+	// UpdateExternalEventID stamps the appointment with the id returned by
+	// an external calendar push. provider is "google" or "apple"; the
+	// corresponding column is set. No-op if the appointment is missing.
+	UpdateExternalEventID(ctx context.Context, apptID uuid.UUID, provider, externalID string) error
 }
 
 type appointmentRepo struct {
@@ -39,13 +43,14 @@ func NewAppointmentRepository(pool *pgxpool.Pool) AppointmentRepository {
 	return &appointmentRepo{pool: pool}
 }
 
-const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, created_at, updated_at"
+const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, google_event_id, apple_event_uid, created_at, updated_at"
 
 func scanAppointment(row pgx.Row) (*model.Appointment, error) {
 	var a model.Appointment
 	if err := row.Scan(
 		&a.ID, &a.UserID, &a.CustomerName, &a.CustomerEmail, &a.StartTime, &a.EndTime,
 		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL, &a.Status,
+		&a.GoogleEventID, &a.AppleEventUID,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -213,7 +218,7 @@ func (r *appointmentRepo) ListServicesFor(ctx context.Context, appointmentIDs []
 // qualifiedAppointmentColumns mirrors appointmentColumns but prefixes every
 // field with the `a.` alias. Required whenever the SELECT joins another
 // table with overlapping names (users shares id/created_at/updated_at).
-const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.created_at, a.updated_at"
+const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.google_event_id, a.apple_event_uid, a.created_at, a.updated_at"
 
 const appointmentByBusinessSQL = `SELECT ` + qualifiedAppointmentColumns + `
 		   FROM appointments a
@@ -228,6 +233,27 @@ func (r *appointmentRepo) ListByDateRange(ctx context.Context, businessID uuid.U
 		return nil, fmt.Errorf("listing appointments by range: %w", err)
 	}
 	return collectAppointments(rows)
+}
+
+func (r *appointmentRepo) UpdateExternalEventID(ctx context.Context, apptID uuid.UUID, provider, externalID string) error {
+	var column string
+	switch provider {
+	case "google":
+		column = "google_event_id"
+	case "apple":
+		column = "apple_event_uid"
+	default:
+		return fmt.Errorf("unsupported calendar provider %q", provider)
+	}
+	// Column identifier is not user-controlled — switch above locks it down.
+	_, err := r.pool.Exec(ctx,
+		`UPDATE appointments SET `+column+` = $1, updated_at = NOW() WHERE id = $2`,
+		externalID, apptID,
+	)
+	if err != nil {
+		return fmt.Errorf("stamping %s event id: %w", provider, err)
+	}
+	return nil
 }
 
 func (r *appointmentRepo) ListByDateRangeForUpdate(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, from, to time.Time) ([]model.Appointment, error) {
