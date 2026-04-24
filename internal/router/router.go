@@ -41,6 +41,16 @@ func New(
 		MaxAge:           300,
 	}))
 
+	// Public ICS subscription feed. Mounted at the root (no /api/v1 prefix)
+	// because calendar clients treat the URL as permanent — keeping it off
+	// the versioned API path means a future /api/v2 cutover doesn't break
+	// every owner's Apple Calendar subscription. 60 req/min per IP is
+	// comfortable headroom over client poll intervals (hourly on iOS).
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.PerIP(60, time.Minute))
+		r.Get("/calendar/ics/{token}", calendarHandler.ServeFeed)
+	})
+
 	// All API routes are mounted under /api/v1 so the prefix can change in
 	// future major versions without breaking existing clients.
 	r.Route("/api/v1", func(r chi.Router) {
@@ -119,6 +129,11 @@ func New(
 					r.Delete("/{id}", scheduleHandler.DeletePersonalTime)
 				})
 			})
+
+			// ICS rotate is provider-specific (no parallel for Google), so
+			// register it outside the {provider} subroute to keep the dispatch
+			// explicit at the handler level.
+			r.Post("/calendar/ics/rotate", calendarHandler.RotateICS)
 
 			r.Route("/calendar/{provider}", func(r chi.Router) {
 				r.Post("/connect", calendarHandler.Connect)

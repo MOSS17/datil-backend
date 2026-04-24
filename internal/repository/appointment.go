@@ -43,14 +43,14 @@ func NewAppointmentRepository(pool *pgxpool.Pool) AppointmentRepository {
 	return &appointmentRepo{pool: pool}
 }
 
-const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, google_event_id, apple_event_uid, created_at, updated_at"
+const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, google_event_id, ical_sequence, created_at, updated_at"
 
 func scanAppointment(row pgx.Row) (*model.Appointment, error) {
 	var a model.Appointment
 	if err := row.Scan(
 		&a.ID, &a.UserID, &a.CustomerName, &a.CustomerEmail, &a.StartTime, &a.EndTime,
 		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL, &a.Status,
-		&a.GoogleEventID, &a.AppleEventUID,
+		&a.GoogleEventID, &a.IcalSequence,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -131,11 +131,17 @@ func (r *appointmentRepo) Create(ctx context.Context, tx pgx.Tx, a *model.Appoin
 	return nil
 }
 
+// Update bumps ical_sequence so ICS subscribers notice the change on their
+// next poll. Any field edit could be visible in an owner's calendar
+// (start/end time, customer name, notes) so we increment on every Update —
+// false-positive bumps just cause calendar clients to re-sync, which is
+// cheap and correct.
 func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.Appointment) error {
 	cmd, err := r.pool.Exec(ctx,
 		`UPDATE appointments
 		    SET customer_name = $1, customer_email = $2, start_time = $3, end_time = $4, total = $5,
-		        customer_phone = $6, advance_payment_image_url = $7, updated_at = NOW()
+		        customer_phone = $6, advance_payment_image_url = $7,
+		        ical_sequence = ical_sequence + 1, updated_at = NOW()
 		  WHERE id = $8`,
 		a.CustomerName, a.CustomerEmail, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL, id,
 	)
@@ -148,9 +154,13 @@ func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.App
 	return nil
 }
 
+// UpdateStatus bumps the RFC 5545 SEQUENCE so a transition to 'cancelled'
+// propagates to ICS subscribers' calendars as an update-in-place rather
+// than a new event. Non-cancel transitions (confirmed → completed) also
+// bump — they're rare and don't need to be free.
 func (r *appointmentRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
 	cmd, err := r.pool.Exec(ctx,
-		`UPDATE appointments SET status = $1, updated_at = NOW() WHERE id = $2`,
+		`UPDATE appointments SET status = $1, ical_sequence = ical_sequence + 1, updated_at = NOW() WHERE id = $2`,
 		status, id,
 	)
 	if err != nil {
@@ -218,7 +228,7 @@ func (r *appointmentRepo) ListServicesFor(ctx context.Context, appointmentIDs []
 // qualifiedAppointmentColumns mirrors appointmentColumns but prefixes every
 // field with the `a.` alias. Required whenever the SELECT joins another
 // table with overlapping names (users shares id/created_at/updated_at).
-const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.google_event_id, a.apple_event_uid, a.created_at, a.updated_at"
+const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.google_event_id, a.ical_sequence, a.created_at, a.updated_at"
 
 const appointmentByBusinessSQL = `SELECT ` + qualifiedAppointmentColumns + `
 		   FROM appointments a

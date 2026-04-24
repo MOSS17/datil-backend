@@ -1,9 +1,14 @@
-// Package calendar implements push-only integrations between datil
-// appointments and external calendar providers (Google Calendar via OAuth
-// 2.0 and iCloud Calendar via CalDAV). Phase 6 scope is push-only: a new
-// appointment emits an event to every active integration the owner has.
-// Pull sync (subtracting external events from availability) is a deferred
-// phase; this package carries no read-side logic.
+// Package calendar implements calendar integrations for datil owners.
+//
+// Two integration styles coexist:
+//   - Google Calendar via OAuth 2.0 push: every reserve fires a goroutine
+//     that creates an event on the owner's Google primary calendar.
+//   - ICS subscription feed: the owner subscribes their Apple Calendar (or
+//     any RFC 5545 client) to a per-user webcal:// URL. We don't push; the
+//     client polls. See ics.go for the renderer.
+//
+// Phase 6 scope is one-way (datil → external). Pull sync (subtracting
+// external events from availability) is deferred to a future phase.
 package calendar
 
 import (
@@ -47,12 +52,12 @@ func (NoopSyncer) PushEvent(context.Context, model.CalendarIntegration, EventInp
 }
 
 // DispatchingSyncer is what the booking handler holds: a single Syncer that
-// routes by integration.Provider. An unknown provider is a silent skip so
-// adding a new one (e.g. "outlook") doesn't retroactively error on rows
-// written before this code was deployed.
+// routes by integration.Provider. Only push-style providers appear here —
+// ICS is pull-based, so provider="ics" rows flow through as a silent skip.
+// An unknown provider is also a silent skip so adding a new one (e.g.
+// "outlook") doesn't retroactively error on rows written beforehand.
 type DispatchingSyncer struct {
 	Google Syncer
-	Apple  Syncer
 }
 
 func (d DispatchingSyncer) PushEvent(ctx context.Context, ci model.CalendarIntegration, input EventInput) (string, error) {
@@ -62,11 +67,6 @@ func (d DispatchingSyncer) PushEvent(ctx context.Context, ci model.CalendarInteg
 			return "", nil
 		}
 		return d.Google.PushEvent(ctx, ci, input)
-	case "apple":
-		if d.Apple == nil {
-			return "", nil
-		}
-		return d.Apple.PushEvent(ctx, ci, input)
 	default:
 		return "", nil
 	}

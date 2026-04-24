@@ -57,19 +57,15 @@ func main() {
 	calendarRepo := repository.NewCalendarRepository(pool)
 	dashboardRepo := repository.NewDashboardRepository(pool, appointmentRepo)
 
-	// Calendar syncer: google depends on OAuth creds (degrades to noop if
-	// unset); apple is always available because its credentials are
-	// per-user. DispatchingSyncer routes by integration.Provider.
+	// Calendar syncer: Google is push-style (OAuth) and degrades to noop
+	// when creds aren't configured. ICS is pull-style — clients poll the
+	// public ServeFeed endpoint — so it doesn't participate in dispatch.
 	googleSyncer := calendar.NewGoogleSyncer(cfg.GoogleOAuthClientID, cfg.GoogleOAuthClientSecret, cfg.GoogleOAuthRedirectURL, calendarRepo)
-	appleSyncer := calendar.NewAppleSyncer()
 	var googleForDispatch calendar.Syncer = googleSyncer
 	if googleSyncer == nil {
 		googleForDispatch = calendar.NoopSyncer{}
 	}
-	calSyncer := calendar.DispatchingSyncer{
-		Google: googleForDispatch,
-		Apple:  appleSyncer,
-	}
+	calSyncer := calendar.DispatchingSyncer{Google: googleForDispatch}
 	stateSigner := calendar.NewStateSigner(cfg.JWTSecret)
 
 	// Handlers
@@ -79,7 +75,7 @@ func main() {
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
 	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, businessRepo, serviceRepo, uploader, pool)
 	scheduleHandler := handler.NewScheduleHandler(scheduleRepo)
-	calendarHandler := handler.NewCalendarHandler(cfg, calendarRepo, googleSyncer, appleSyncer, stateSigner)
+	calendarHandler := handler.NewCalendarHandler(cfg, calendarRepo, userRepo, businessRepo, appointmentRepo, serviceRepo, googleSyncer, stateSigner)
 	dashboardHandler := handler.NewDashboardHandler(dashboardRepo, businessRepo)
 	bookingHandler := handler.NewBookingHandler(
 		businessRepo, userRepo, categoryRepo, serviceRepo,

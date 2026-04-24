@@ -8,7 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.15
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.0
 	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608
-	github.com/emersion/go-webdav v0.7.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/httprate v0.15.0

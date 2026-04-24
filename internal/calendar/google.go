@@ -99,8 +99,11 @@ func (g *GoogleSyncer) PushEvent(ctx context.Context, ci model.CalendarIntegrati
 	if ci.RefreshToken == nil || *ci.RefreshToken == "" {
 		return "", errors.New("google integration missing refresh token")
 	}
+	if ci.AccessToken == nil {
+		return "", errors.New("google integration missing access token")
+	}
 	initial := &oauth2.Token{
-		AccessToken:  ci.AccessToken,
+		AccessToken:  *ci.AccessToken,
 		RefreshToken: *ci.RefreshToken,
 	}
 	if ci.ExpiresAt != nil {
@@ -117,7 +120,8 @@ func (g *GoogleSyncer) PushEvent(ctx context.Context, ci model.CalendarIntegrati
 	// successfully this round; next push just does another refresh.
 	if current.AccessToken != initial.AccessToken {
 		rotated := ci
-		rotated.AccessToken = current.AccessToken
+		at := current.AccessToken
+		rotated.AccessToken = &at
 		expiry := current.Expiry
 		rotated.ExpiresAt = &expiry
 		if current.RefreshToken != "" {

@@ -42,6 +42,11 @@ type Config struct {
 	// browser after persisting the integration. Falls back to the first
 	// CORS origin so prod doesn't need an extra env var.
 	FrontendBaseURL string
+	// APIPublicBaseURL is the externally-reachable origin of this API,
+	// e.g. https://api.datil.mx. Used to build webcal:// and https://
+	// subscription URLs for the ICS feed handler. Must not carry a trailing
+	// slash. Falls back to http://localhost:<PORT> in development.
+	APIPublicBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -102,6 +107,11 @@ func Load() (*Config, error) {
 		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
 		GoogleOAuthRedirectURL:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
 		FrontendBaseURL:         os.Getenv("FRONTEND_BASE_URL"),
+		APIPublicBaseURL:        strings.TrimRight(os.Getenv("API_PUBLIC_BASE_URL"), "/"),
+	}
+
+	if cfg.APIPublicBaseURL == "" {
+		cfg.APIPublicBaseURL = "http://localhost:" + cfg.Port
 	}
 
 	// Google OAuth: id/secret/redirect must be all-or-nothing; partial
