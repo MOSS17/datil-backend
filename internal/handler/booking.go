@@ -226,15 +226,19 @@ func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 	if customerPhone == "" {
 		fields["customer_phone"] = "requerido"
 	}
-	if customerEmail == "" {
-		fields["customer_email"] = "requerido"
-	}
 	if startTimeStr == "" {
 		fields["start_time"] = "requerido"
 	}
 	if len(fields) > 0 {
 		WriteError(w, http.StatusBadRequest, "datos inválidos", fields)
 		return
+	}
+
+	// customer_email is optional. Frontend may omit it for walk-in style
+	// bookings; persist as NULL when blank.
+	var customerEmailPtr *string
+	if customerEmail != "" {
+		customerEmailPtr = &customerEmail
 	}
 
 	startTime, err := time.Parse(time.RFC3339, startTimeStr)
@@ -291,6 +295,7 @@ func (h *BookingHandler) Reserve(w http.ResponseWriter, r *http.Request) {
 	appt := &model.Appointment{
 		UserID:                 owner.ID,
 		CustomerName:           customerName,
+		CustomerEmail:          customerEmailPtr,
 		StartTime:              startTime,
 		EndTime:                endTime,
 		Total:                  total,

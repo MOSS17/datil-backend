@@ -64,6 +64,7 @@ type Appointment struct {
 	ID                     uuid.UUID            `json:"id"`
 	UserID                 uuid.UUID            `json:"user_id"`
 	CustomerName           string               `json:"customer_name"`
+	CustomerEmail          *string              `json:"customer_email"`
 	StartTime              time.Time            `json:"start_time"`
 	EndTime                time.Time            `json:"end_time"`
 	Total                  float64              `json:"total"`
