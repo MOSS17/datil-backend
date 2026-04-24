@@ -15,7 +15,10 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) | **Merged** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 2.1 | Categories CRUD (services depend on it) | **Merged** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **Merged** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 3 | Public booking flow + availability algorithm | **Merged** | [#8](https://github.com/MOSS17/datil-backend/pull/8) | **Merged** | [frontend#5](https://github.com/MOSS17/datil-frontend/pull/5) |
-| 4 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
+| 4 | Owner dashboard + appointments CRUD | Not started | — | Not started (still mocked: `/dashboard`, `/appointments/*`) | — |
+| 5 | Schedule config (workdays + personal time) | Not started | — | Not started (still mocked: `/schedule/*`) | — |
+| 6 | Calendar integration (Google + Apple OAuth, two-way sync) | Not started | — | Not started (still mocked: `/calendar/*`) | — |
+| 7 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
 
 **Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
 
@@ -367,9 +370,121 @@ Branch `wire-phase-3` off frontend `main`. The backend PR must be merged first s
 
 ---
 
-## Phase 4 — Polish
+## Phase 4 — Owner dashboard + appointments CRUD
 
-**Goal**: deployment hygiene; non-blocking for dev but required before public launch.
+**Goal**: flip the authenticated owner-side off mocks. After this phase, signing in loads real appointment data and the owner can manage existing appointments.
+
+### Scope decision to resolve first
+Frontend has `APPOINTMENT_STATUS = pending | confirmed | cancelled | completed` (`src/lib/constants.ts`); backend `appointments` table has no status column. Either:
+- **(a)** Add a `status` column via migration with default `'confirmed'` and backfill existing rows — owner gets a real state machine.
+- **(b)** Drop the status concept entirely for now — every created appointment is implicitly live; cancellation = `DELETE`.
+
+Pick (a) if you need "cancelled but kept for records"; pick (b) if that's a future feature. **This PR's author decides before starting; don't wait for the roadmap.**
+
+### Migration (only if picking option a)
+`migrations/0000NN_add_appointments_status.up.sql`:
+```sql
+ALTER TABLE appointments ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'confirmed';
+ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
+    CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed'));
+```
+
+### Repositories
+- `AppointmentRepository` — already mostly filled in phase 3. Verify `List`, `GetByID`, `Update`, `Delete` still work; only `Create` had the tx-required signature from the booking flow, but owner-side manual-create can use a separate tx-less `CreateForOwner` helper or just open its own tx inline.
+- `DashboardRepository` — new surface. Single SQL call returns `today_count`, `week_count`, `monthly_income` (sum of `total`), `upcoming` (next N future appointments), `latest` (last N past). All scoped through `users.business_id`. Keep it one aggregate query if feasible; otherwise one small query per field is fine.
+
+### Handlers — `internal/handler/dashboard.go`
+- `Get`: return `DashboardData` from a single repo call. Compute "today"/"week"/"month" in the caller's timezone (which, per the deferred-work note, is the server's `time.Local` until business-tz lands).
+
+### Handlers — `internal/handler/appointment.go`
+All require `middleware.BusinessIDFromContext` and scope queries through the authenticated user's `business_id`.
+- `List`: query params `from=YYYY-MM-DD&to=YYYY-MM-DD` (default: today → today+30d). Returns the owner's appointments in the window.
+- `Get`: 403 if the appointment's `user_id` belongs to another business; 404 if missing.
+- `Create`: manual owner-initiated booking. Skip the `FOR UPDATE` race guard — owners are expected to know what they're double-booking.
+- `Update`: edit customer info, notes, and (if option a) status.
+- `Delete`: hard delete.
+
+### Frontend cutover (separate `wire-phase-4` PR)
+1. `mocks/router.ts`: add `/^\/dashboard$/` and `/^\/appointments(\/.*)?$/` to `AUTHED_REAL`. Remove the old `/appointments/*` mock handlers (they're now real).
+2. Update `useAppointments.ts` return types to match whatever the backend actually returns (status field if you went with option a).
+3. Dashboard page: drop `mockAppointments` import; use `useDashboard()`.
+4. Smoke: signup a fresh user → zero appointments show on dashboard. Reserve via the public flow → refresh dashboard → appointment appears in today's list.
+
+### Ship gate
+- `go test`, `go vet` clean.
+- Dashboard page against local backend shows real counts + real upcoming list.
+- Owner can delete an appointment; deleting cascades to `appointment_services` (FK already has `ON DELETE CASCADE`).
+- Cross-business 403: user A hits `PUT /appointments/<B's-id>` → 403.
+
+---
+
+## Phase 5 — Schedule config (workdays + personal time)
+
+**Goal**: owners can configure their weekly hours and block personal time through the dashboard. Unblocks the phase-3 smoke step that currently requires raw SQL.
+
+### Repositories
+Already filled during phase 3. `ScheduleRepository.{ListWorkdays, UpsertWorkdays, ListPersonalTime, CreatePersonalTime, DeletePersonalTime}` are ready. Nothing to do here.
+
+### Handlers — `internal/handler/schedule.go`
+- `GetWorkdays`: `scheduleRepo.ListWorkdays(businessID)`. Returns all 7 days (disabled included) so the UI can render the full week.
+- `UpdateWorkdays`: body is `[]model.Workday` — whole-week replacement. Handler validates: `day ∈ [0..6]`, each `WorkHour.StartTime < EndTime`, no overlapping hours within a day. Call `scheduleRepo.UpsertWorkdays`.
+- `ListPersonalTime`: return the caller's personal time, scoped by `middleware.UserIDFromContext`.
+- `CreatePersonalTime`: validate `end_date >= start_date`; if `start_time`/`end_time` are both set then `start_date == end_date` and `start_time < end_time` (mirror the CHECK constraint in the migration, but return 400 with a field-level message instead of a DB error).
+- `DeletePersonalTime`: load first, 403 if `user_id` doesn't match the caller, then delete.
+
+### Models
+May need request types in `model/models.go` for `UpdateWorkdaysRequest` and `CreatePersonalTimeRequest` if the raw `Workday`/`PersonalTime` shapes don't match what the frontend sends (they likely do). Add only if necessary.
+
+### Frontend cutover (separate `wire-phase-5` PR)
+1. `mocks/router.ts`: add `/^\/schedule(\/.*)?$/` to `AUTHED_REAL`. Remove the old schedule mock handlers.
+2. `useSchedule.ts`: already exists with the right route shapes (`/schedule/workdays`, `/schedule/personal-time`). Update response parsing if shapes differ.
+3. Schedule settings page: verify edits persist + reload, deletes work, validation errors surface inline via `applyApiErrors`.
+4. Smoke: save a workday → log out/in → hours persist. Block a Saturday as personal time → public booking flow's `/availability` respects it.
+
+### Ship gate
+- `go test`, `go vet` clean.
+- Workday editor saves end-to-end.
+- Personal-time block shows up as unavailable on the public booking page.
+- Phase-3 smoke step 2 ("seed workday hours via SQL") is no longer necessary — the UI does it.
+
+---
+
+## Phase 6 — Calendar integration (Google + Apple OAuth, two-way sync)
+
+**Goal**: bidirectional sync between the owner's external calendar and datil appointments. MVP-blocking but sequenced last because the surface is big and the other phases compose cleanly without it.
+
+### This phase needs research before planning
+
+Calendar integration is the only phase in the roadmap that isn't a straightforward CRUD + wiring exercise. Before starting, answer:
+
+1. **OAuth app registration** — Google Cloud Console project + OAuth consent screen (verification review timeline: weeks if you request sensitive scopes; instant if you stay in "testing" mode with <100 users). Apple is trickier: requires an Apple Developer account + Sign in with Apple setup.
+2. **Sync direction + source of truth**:
+   - datil → external (push new appointments to Google Calendar): straightforward.
+   - external → datil (pull blocked times from Google Calendar to subtract from availability): harder — requires webhook subscriptions or periodic polling.
+   - MVP might be one-way (push only) with a "connected to calendar" badge; pull can come later.
+3. **Token storage**: access tokens expire; refresh tokens need encryption at rest or a KMS call. `calendar_integrations` table has `access_token` and `refresh_token` columns but no encryption today.
+4. **Provider behavior**: Google and Apple have different APIs. Consider whether Apple support is actually MVP (vs. Google-only for launch).
+
+### Suggested staging
+- **Phase 6a — Google push-only** (MVP): OAuth handshake, store tokens, post-commit goroutine in `Reserve` also creates a Google Calendar event. Best-effort; failures log.
+- **Phase 6b — Google pull** (post-MVP): fetch external events, subtract from availability like personal time.
+- **Phase 6c — Apple support** (post-MVP): same shape as 6a but Apple APIs.
+
+Don't scope 6b and 6c until 6a is shipped and the API shape is proven.
+
+### Handlers — `internal/handler/calendar.go`
+All three handlers are currently stubs. Whoever picks this up rewrites them completely based on the research above. The repo methods (`GetByUserAndProvider`, `Upsert`, `Delete`) need to be filled too.
+
+### Ship gate (for 6a at minimum)
+- Owner clicks "Connect Google Calendar" → OAuth flow completes → `calendar_integrations` row appears.
+- Reserve a new appointment → event appears on the owner's Google Calendar within 30 seconds.
+- Disconnect → row deleted; future reserves don't attempt to push.
+
+---
+
+## Phase 7 — Polish (deploy hygiene)
+
+**Goal**: last phase before public launch. Everything else must ship first — this is the gate.
 
 ### Changes
 - `cmd/api/main.go` — startup migration: import `github.com/golang-migrate/migrate/v4`, run `m.Up()` before `ListenAndServe`. Idempotent; fatal on non-nil-non-NoChange error.
@@ -380,6 +495,7 @@ Branch `wire-phase-3` off frontend `main`. The backend PR must be merged first s
 
 ### Ship gate
 - Railway deploy: container starts, migrations run automatically, runs as uid 10001, CI green on a PR, `govulncheck` reports no issues.
+- `grep -rn "not implemented" internal/` returns zero hits (see "Keeping this doc honest").
 
 ---
 
