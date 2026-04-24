@@ -403,6 +403,38 @@ func (h *AppointmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	WriteNoContent(w)
 }
 
+// MarkSeen stamps seen_at so the frontend can stop showing the "new" pill
+// for this appointment across devices. Idempotent: re-calling on an
+// already-seen appointment preserves the original timestamp.
+// POST /appointments/{id}/seen
+func (h *AppointmentHandler) MarkSeen(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseAppointmentID(w, r)
+	if !ok {
+		return
+	}
+	_, status, err := h.loadOwned(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not load appointment", nil)
+		return
+	}
+	if status != 0 {
+		writeAppointmentStatus(w, status)
+		return
+	}
+	appt, err := h.repo.MarkSeen(r.Context(), id)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not mark appointment seen", nil)
+		return
+	}
+	services, err := h.repo.ListServicesFor(r.Context(), []uuid.UUID{appt.ID})
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not load appointment services", nil)
+		return
+	}
+	appt.Services = services[appt.ID]
+	WriteJSON(w, http.StatusOK, appt)
+}
+
 // --- helpers -----------------------------------------------------------------
 
 func parseAppointmentID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {

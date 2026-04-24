@@ -1,0 +1,2 @@
+ALTER TABLE appointments
+    ADD COLUMN seen_at TIMESTAMPTZ NULL;

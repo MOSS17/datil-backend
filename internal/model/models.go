@@ -74,6 +74,7 @@ type Appointment struct {
 	Status                 string               `json:"status"`
 	GoogleEventID          *string              `json:"google_event_id,omitempty"`
 	IcalSequence           int                  `json:"ical_sequence"`
+	SeenAt                 *time.Time           `json:"seen_at"`
 	CreatedAt              time.Time            `json:"created_at"`
 	UpdatedAt              time.Time            `json:"updated_at"`
 	Services               []AppointmentService `json:"services,omitempty"`
