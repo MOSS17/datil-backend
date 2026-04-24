@@ -17,6 +17,7 @@ type ScheduleRepository interface {
 	UpsertWorkdays(ctx context.Context, businessID uuid.UUID, workdays []model.Workday) error
 	ListPersonalTime(ctx context.Context, userID uuid.UUID) ([]model.PersonalTime, error)
 	ListPersonalTimeOverlapping(ctx context.Context, userID uuid.UUID, date time.Time) ([]model.PersonalTime, error)
+	GetPersonalTime(ctx context.Context, id uuid.UUID) (*model.PersonalTime, error)
 	CreatePersonalTime(ctx context.Context, pt *model.PersonalTime) error
 	DeletePersonalTime(ctx context.Context, id uuid.UUID) error
 }
@@ -198,6 +199,14 @@ func (r *scheduleRepo) ListPersonalTimeOverlapping(ctx context.Context, userID u
 		return nil, fmt.Errorf("listing overlapping personal_time: %w", err)
 	}
 	return r.collectPersonalTime(rows)
+}
+
+func (r *scheduleRepo) GetPersonalTime(ctx context.Context, id uuid.UUID) (*model.PersonalTime, error) {
+	row := r.pool.QueryRow(ctx,
+		`SELECT `+personalTimeColumns+` FROM personal_time WHERE id = $1`,
+		id,
+	)
+	return scanPersonalTime(row)
 }
 
 func (r *scheduleRepo) CreatePersonalTime(ctx context.Context, pt *model.PersonalTime) error {

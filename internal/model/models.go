@@ -89,14 +89,14 @@ type Workday struct {
 	BusinessID uuid.UUID  `json:"business_id"`
 	Day        int        `json:"day"`
 	IsEnabled  bool       `json:"is_enabled"`
-	Hours      []WorkHour `json:"hours,omitempty"`
+	Hours      []WorkHour `json:"hours"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
 
 type WorkHour struct {
 	ID        uuid.UUID `json:"id"`
-	DayID     uuid.UUID `json:"day_id"`
+	DayID     uuid.UUID `json:"workday_id"`
 	StartTime string    `json:"start_time"`
 	EndTime   string    `json:"end_time"`
 	CreatedAt time.Time `json:"created_at"`
@@ -233,4 +233,19 @@ type UpdateAppointmentRequest struct {
 
 type UpdateAppointmentStatusRequest struct {
 	Status string `json:"status"`
+}
+
+// CreatePersonalTimeRequest accepts the shape the frontend sends for all
+// three UI patterns: a single "hours" block, a "full_day", or a "date_range".
+// type/reason/date are declared so DisallowUnknownFields doesn't reject them;
+// the handler normalises to start_date/end_date/start_time/end_time before
+// calling the repo. Persisting type/reason would need a schema change.
+type CreatePersonalTimeRequest struct {
+	Type      string  `json:"type,omitempty"`
+	Reason    string  `json:"reason,omitempty"`
+	Date      string  `json:"date,omitempty"`
+	StartDate string  `json:"start_date,omitempty"`
+	EndDate   string  `json:"end_date,omitempty"`
+	StartTime *string `json:"start_time,omitempty"`
+	EndTime   *string `json:"end_time,omitempty"`
 }
