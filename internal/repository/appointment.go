@@ -210,7 +210,12 @@ func (r *appointmentRepo) ListServicesFor(ctx context.Context, appointmentIDs []
 	return out, nil
 }
 
-const appointmentByBusinessSQL = `SELECT ` + appointmentColumns + `
+// qualifiedAppointmentColumns mirrors appointmentColumns but prefixes every
+// field with the `a.` alias. Required whenever the SELECT joins another
+// table with overlapping names (users shares id/created_at/updated_at).
+const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.created_at, a.updated_at"
+
+const appointmentByBusinessSQL = `SELECT ` + qualifiedAppointmentColumns + `
 		   FROM appointments a
 		   JOIN users u ON u.id = a.user_id
 		  WHERE u.business_id = $1
