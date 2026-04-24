@@ -187,6 +187,9 @@ func (h *AppointmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.StartTime.IsZero() {
 		fields["start_time"] = "requerido"
 	}
+	if !req.EndTime.IsZero() && !req.EndTime.After(req.StartTime) {
+		fields["end_time"] = "debe ser posterior a start_time"
+	}
 	if len(req.ServiceIDs) == 0 {
 		fields["service_ids"] = "requerido"
 	}
@@ -204,13 +207,18 @@ func (h *AppointmentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	endTime := req.EndTime
+	if endTime.IsZero() {
+		endTime = req.StartTime.Add(time.Duration(totalDuration) * time.Minute)
+	}
+
 	appt := &model.Appointment{
 		UserID:        userID,
 		CustomerName:  req.CustomerName,
 		CustomerEmail: req.CustomerEmail,
 		CustomerPhone: req.CustomerPhone,
 		StartTime:     req.StartTime,
-		EndTime:       req.StartTime.Add(time.Duration(totalDuration) * time.Minute),
+		EndTime:       endTime,
 		Total:         total,
 		Status:        "confirmed",
 	}
