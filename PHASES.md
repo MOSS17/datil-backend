@@ -16,7 +16,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 2.1 | Categories CRUD (services depend on it) | **Merged** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **Merged** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 3 | Public booking flow + availability algorithm | **Merged** | [#8](https://github.com/MOSS17/datil-backend/pull/8) | **Merged** | [frontend#5](https://github.com/MOSS17/datil-frontend/pull/5) |
 | 3.2 | Business timezone — column + threading through availability | **In review** | [#11](https://github.com/MOSS17/datil-backend/pull/11) | Not started (signup form may auto-detect browser tz) | — |
-| 4 | Owner dashboard + appointments CRUD | Not started | — | Not started (still mocked: `/dashboard`, `/appointments/*`) | — |
+| 4 | Owner dashboard + appointments CRUD | **In review** | [#13](https://github.com/MOSS17/datil-backend/pull/13) | Not started (still mocked: `/dashboard`, `/appointments/*`) | — |
 | 5 | Schedule config (workdays + personal time) | Not started | — | Not started (still mocked: `/schedule/*`) | — |
 | 6 | Calendar integration (Google + Apple OAuth, two-way sync) | Not started | — | Not started (still mocked: `/calendar/*`) | — |
 | 7 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
