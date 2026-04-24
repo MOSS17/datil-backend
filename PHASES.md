@@ -18,7 +18,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 3.2 | Business timezone — column + threading through availability | **Merged** | [#11](https://github.com/MOSS17/datil-backend/pull/11) | **Merged** | [frontend#6](https://github.com/MOSS17/datil-frontend/pull/6) |
 | 4 | Owner dashboard + appointments CRUD | **Merged** | [#13](https://github.com/MOSS17/datil-backend/pull/13) | Not started (still mocked: `/dashboard`, `/appointments/*`) | — |
 | 5 | Schedule config (workdays + personal time) | **In review** | [#14](https://github.com/MOSS17/datil-backend/pull/14) | Not started (still mocked: `/schedule/*`) | — |
-| 6 | Calendar integration — Google push + Apple CalDAV push | **In review** | — | Not started (still mocked: `/calendar/*`) | — |
+| 6 | Calendar integration — Google push + Apple CalDAV push | **In review** | [#16](https://github.com/MOSS17/datil-backend/pull/16) | Not started (still mocked: `/calendar/*`) | — |
 | 7 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
 
 **Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
