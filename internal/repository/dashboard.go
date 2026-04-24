@@ -99,13 +99,18 @@ func (r *dashboardRepo) GetDashboard(ctx context.Context, userID, _ uuid.UUID, l
 	}
 	data.Upcoming = upcoming
 
-	// Latest: last N past, any status (owner wants to see cancellations too).
+	// Latest: unread notifications — recently-booked appointments the owner
+	// hasn't opened yet. Bounded to the last 5 days of created_at so the
+	// badge has a natural decay even if the owner never clicks. Clicking
+	// the detail drawer calls POST /appointments/{id}/seen which flips
+	// seen_at and filters the row out of subsequent reads.
 	rows, err = r.pool.Query(ctx,
 		`SELECT `+appointmentColumns+`
 		   FROM appointments
 		  WHERE user_id = $1
-		    AND start_time < $2
-		  ORDER BY start_time DESC
+		    AND seen_at IS NULL
+		    AND created_at >= $2 - INTERVAL '5 days'
+		  ORDER BY created_at DESC
 		  LIMIT $3`,
 		userID, now, latestLimit,
 	)
