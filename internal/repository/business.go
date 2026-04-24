@@ -28,12 +28,17 @@ func NewBusinessRepository(pool *pgxpool.Pool) BusinessRepository {
 	return &businessRepo{pool: pool}
 }
 
-const businessColumns = "id, name, location, description, logo_url, url, beneficiary_clabe, bank_name, beneficiary_name, created_at, updated_at"
+const businessColumns = "id, name, location, description, logo_url, url, timezone, beneficiary_clabe, bank_name, beneficiary_name, created_at, updated_at"
+
+// DefaultBusinessTimezone is used when signup omits one — the MVP is
+// Mexico-targeted so it's the safe fallback. Migration 000016 set the same
+// default at the DB level as a belt-and-suspenders.
+const DefaultBusinessTimezone = "America/Mexico_City"
 
 func scanBusiness(row pgx.Row) (*model.Business, error) {
 	var b model.Business
 	if err := row.Scan(
-		&b.ID, &b.Name, &b.Location, &b.Description, &b.LogoURL, &b.URL,
+		&b.ID, &b.Name, &b.Location, &b.Description, &b.LogoURL, &b.URL, &b.Timezone,
 		&b.BeneficiaryClabe, &b.BankName, &b.BeneficiaryName, &b.CreatedAt, &b.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -55,11 +60,14 @@ func (r *businessRepo) GetByURL(ctx context.Context, url string) (*model.Busines
 }
 
 func (r *businessRepo) Create(ctx context.Context, tx pgx.Tx, b *model.Business) error {
+	if b.Timezone == "" {
+		b.Timezone = DefaultBusinessTimezone
+	}
 	row := tx.QueryRow(ctx,
-		`INSERT INTO businesses (name, url)
-		 VALUES ($1, $2)
+		`INSERT INTO businesses (name, url, timezone)
+		 VALUES ($1, $2, $3)
 		 RETURNING id, created_at, updated_at`,
-		b.Name, b.URL,
+		b.Name, b.URL, b.Timezone,
 	)
 	if err := row.Scan(&b.ID, &b.CreatedAt, &b.UpdatedAt); err != nil {
 		return fmt.Errorf("inserting business: %w", err)

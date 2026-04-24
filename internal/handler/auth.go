@@ -65,6 +65,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 	req.BusinessName = strings.TrimSpace(req.BusinessName)
+	req.Timezone = strings.TrimSpace(req.Timezone)
 
 	if fields := validateSignup(req); len(fields) > 0 {
 		WriteError(w, http.StatusBadRequest, "datos inválidos", fields)
@@ -82,7 +83,7 @@ func (h *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		Email:    req.Email,
 		Password: string(hash),
 	}
-	business := &model.Business{Name: req.BusinessName}
+	business := &model.Business{Name: req.BusinessName, Timezone: req.Timezone}
 
 	emailTaken, err := h.createBusinessAndUser(r.Context(), business, user)
 	if err != nil {
@@ -242,6 +243,13 @@ func validateSignup(req model.SignupRequest) map[string]string {
 	}
 	if len(req.Password) < 8 {
 		fields["password"] = "mínimo 8 caracteres"
+	}
+	// Timezone is optional; validate only if the client sent one. Empty
+	// string falls through to the repo default.
+	if req.Timezone != "" {
+		if _, err := time.LoadLocation(req.Timezone); err != nil {
+			fields["timezone"] = "zona horaria inválida"
+		}
 	}
 	return fields
 }
