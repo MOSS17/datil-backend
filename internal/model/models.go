@@ -222,6 +222,7 @@ type CreateAppointmentRequest struct {
 	CustomerPhone string      `json:"customer_phone"`
 	CustomerEmail *string     `json:"customer_email"`
 	StartTime     time.Time   `json:"start_time"`
+	EndTime       time.Time   `json:"end_time"`
 	ServiceIDs    []uuid.UUID `json:"service_ids"`
 	ExtraIDs      []uuid.UUID `json:"extra_ids"`
 }
