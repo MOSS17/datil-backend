@@ -65,7 +65,10 @@ func main() {
 	scheduleHandler := handler.NewScheduleHandler(scheduleRepo)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	dashboardHandler := handler.NewDashboardHandler(dashboardRepo)
-	bookingHandler := handler.NewBookingHandler(businessRepo, serviceRepo, appointmentRepo, scheduleRepo, notifier)
+	bookingHandler := handler.NewBookingHandler(
+		businessRepo, userRepo, categoryRepo, serviceRepo,
+		appointmentRepo, scheduleRepo, uploader, notifier, pool,
+	)
 
 	// Router
 	r := router.New(

@@ -53,10 +53,13 @@ func New(
 		})
 
 		r.Route("/book/{url}", func(r chi.Router) {
+			r.Use(middleware.PerIP(20, time.Minute))
 			r.Get("/", bookingHandler.GetBusiness)
 			r.Get("/services", bookingHandler.GetServices)
 			r.Get("/availability", bookingHandler.GetAvailability)
-			r.Post("/reserve", bookingHandler.Reserve)
+			// Reserve gets a tighter cap on top of the 20/min above —
+			// each reserve fires a Twilio message and writes a DB row.
+			r.With(middleware.PerIP(5, time.Minute)).Post("/reserve", bookingHandler.Reserve)
 		})
 
 		// Authenticated routes

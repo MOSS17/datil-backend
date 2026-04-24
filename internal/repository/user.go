@@ -16,6 +16,7 @@ var ErrNotFound = errors.New("not found")
 type UserRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*model.User, error)
 	GetByEmail(ctx context.Context, email string) (*model.User, error)
+	GetByBusinessID(ctx context.Context, businessID uuid.UUID) (*model.User, error)
 	Create(ctx context.Context, tx pgx.Tx, u *model.User) error
 	Update(ctx context.Context, id uuid.UUID, u *model.User) error
 }
@@ -48,6 +49,18 @@ func (r *userRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.User, erro
 
 func (r *userRepo) GetByEmail(ctx context.Context, email string) (*model.User, error) {
 	row := r.pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE email = $1`, email)
+	return scanUser(row)
+}
+
+// GetByBusinessID returns the (currently single) user that owns a business.
+// The booking flow uses this to attribute reserved appointments to the
+// owner — appointments.user_id is the FK, not business_id. If multiple users
+// per business is added later, this needs a smarter selection rule.
+func (r *userRepo) GetByBusinessID(ctx context.Context, businessID uuid.UUID) (*model.User, error) {
+	row := r.pool.QueryRow(ctx,
+		`SELECT `+userColumns+` FROM users WHERE business_id = $1 ORDER BY created_at LIMIT 1`,
+		businessID,
+	)
 	return scanUser(row)
 }
 

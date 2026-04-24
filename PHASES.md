@@ -13,8 +13,8 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 0 | Foundation — response envelope, storage seam, model cleanup | **Merged** | [#1](https://github.com/MOSS17/datil-backend/pull/1) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 1 | Auth — signup / login / refresh with rotation | **Merged** | [#2](https://github.com/MOSS17/datil-backend/pull/2) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
 | 2 | Logo + service extras (R2 wired) | **Merged** | [#3](https://github.com/MOSS17/datil-backend/pull/3) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
-| 2.1 | Categories CRUD (services depend on it) | **In review** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
-| 3 | Public booking flow + availability algorithm | Not started | — | Not started (still mocked: `/book/*`, `useBusinessBySlug`) | — |
+| 2.1 | Categories CRUD (services depend on it) | **Merged** | [#6](https://github.com/MOSS17/datil-backend/pull/6) | **In review** | [frontend#4](https://github.com/MOSS17/datil-frontend/pull/4) |
+| 3 | Public booking flow + availability algorithm | **In review** | [#8](https://github.com/MOSS17/datil-backend/pull/8) | Not started (still mocked: `/book/*`, `useBusinessBySlug`) | — |
 | 4 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
 
 **Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
