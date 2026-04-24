@@ -30,6 +30,23 @@ type Config struct {
 	R2SecretAccessKey string
 	R2Bucket          string
 	R2PublicBaseURL   string
+
+	// Calendar integrations. Google is optional — if client id/secret are
+	// unset the handler reports 503 for google connect and the Reserve push
+	// skips the google branch. Apple uses per-user CalDAV credentials only,
+	// so no server-side creds are needed here.
+	GoogleOAuthClientID     string
+	GoogleOAuthClientSecret string
+	GoogleOAuthRedirectURL  string
+	// FrontendBaseURL is where the Google OAuth callback redirects the
+	// browser after persisting the integration. Falls back to the first
+	// CORS origin so prod doesn't need an extra env var.
+	FrontendBaseURL string
+	// APIPublicBaseURL is the externally-reachable origin of this API,
+	// e.g. https://api.datil.mx. Used to build webcal:// and https://
+	// subscription URLs for the ICS feed handler. Must not carry a trailing
+	// slash. Falls back to http://localhost:<PORT> in development.
+	APIPublicBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -85,6 +102,39 @@ func Load() (*Config, error) {
 		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2Bucket:           os.Getenv("R2_BUCKET"),
 		R2PublicBaseURL:    os.Getenv("R2_PUBLIC_BASE_URL"),
+
+		GoogleOAuthClientID:     os.Getenv("GOOGLE_OAUTH_CLIENT_ID"),
+		GoogleOAuthClientSecret: os.Getenv("GOOGLE_OAUTH_CLIENT_SECRET"),
+		GoogleOAuthRedirectURL:  os.Getenv("GOOGLE_OAUTH_REDIRECT_URL"),
+		FrontendBaseURL:         os.Getenv("FRONTEND_BASE_URL"),
+		APIPublicBaseURL:        strings.TrimRight(os.Getenv("API_PUBLIC_BASE_URL"), "/"),
+	}
+
+	if cfg.APIPublicBaseURL == "" {
+		cfg.APIPublicBaseURL = "http://localhost:" + cfg.Port
+	}
+
+	// Google OAuth: id/secret/redirect must be all-or-nothing; partial
+	// config would fail at connect time with a confusing error.
+	googleSet := map[string]string{
+		"GOOGLE_OAUTH_CLIENT_ID":     cfg.GoogleOAuthClientID,
+		"GOOGLE_OAUTH_CLIENT_SECRET": cfg.GoogleOAuthClientSecret,
+		"GOOGLE_OAUTH_REDIRECT_URL":  cfg.GoogleOAuthRedirectURL,
+	}
+	var googlePresent, googleMissing []string
+	for name, val := range googleSet {
+		if val == "" {
+			googleMissing = append(googleMissing, name)
+		} else {
+			googlePresent = append(googlePresent, name)
+		}
+	}
+	if len(googlePresent) > 0 && len(googleMissing) > 0 {
+		return nil, fmt.Errorf("google calendar integration requires all of GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REDIRECT_URL (missing: %s)", strings.Join(googleMissing, ", "))
+	}
+
+	if cfg.FrontendBaseURL == "" && len(allowedOrigins) > 0 {
+		cfg.FrontendBaseURL = allowedOrigins[0]
 	}
 
 	switch provider {

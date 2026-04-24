@@ -18,7 +18,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 | 3.2 | Business timezone — column + threading through availability | **Merged** | [#11](https://github.com/MOSS17/datil-backend/pull/11) | **Merged** | [frontend#6](https://github.com/MOSS17/datil-frontend/pull/6) |
 | 4 | Owner dashboard + appointments CRUD | **Merged** | [#13](https://github.com/MOSS17/datil-backend/pull/13) | **Merged** | [frontend#8](https://github.com/MOSS17/datil-frontend/pull/8) |
 | 5 | Schedule config (workdays + personal time) | **Merged** | [#14](https://github.com/MOSS17/datil-backend/pull/14) | **Merged** | [frontend#9](https://github.com/MOSS17/datil-frontend/pull/9) |
-| 6 | Calendar integration (Google + Apple OAuth, two-way sync) | Not started | — | Not started (still mocked: `/calendar/*`) | — |
+| 6 | Calendar integration — Google push + ICS subscription feed | **In review** | [#16](https://github.com/MOSS17/datil-backend/pull/16) | **In review** | [frontend#10](https://github.com/MOSS17/datil-frontend/pull/10) |
 | 7 | Polish — startup migrations, non-root container, CI | Not started | — | n/a (no frontend surface) | — |
 
 **Frontend wire-up batching**: phases 0–2.1 are covered by a single frontend PR ([frontend#4](https://github.com/MOSS17/datil-frontend/pull/4)) because mock-replacement was done in one pass. Future phases get their own frontend PRs.
@@ -43,6 +43,7 @@ This file is the running execution plan for the work outlined in `TODO-backend.m
 - **Storage**: Cloudflare R2 (free tier, zero egress, S3-compatible SDK).
 - **Naming**: `/auth/signup` (not register), `PUT /business/logo` (not `/businesses/:id/logo`), `AuthResponse` (not `LoginResponse`). `businesses.logo` column renamed to `logo_url` to match frontend.
 - **Payment proof**: inline multipart inside `POST /book/{url}/reserve` (not a separate upload endpoint).
+- **Apple Calendar via ICS subscription feed, not CalDAV**: originally planned CalDAV + Apple app-specific passwords, then pivoted. Rationale: making SMB owners generate app-specific passwords at appleid.apple.com was unacceptable UX, and holding those credentials was security surface we didn't want. ICS is a signed per-user feed URL (`webcal://...`) that any RFC 5545 client subscribes to — Apple Calendar, Outlook, Fastmail, Google Calendar. One-way (datil → external) is fine because owners already block personal time in-app via `personal_time`, so we never need to read external events back. Google Calendar stays OAuth-based.
 
 These decisions are closed. Do not revisit without flagging in a PR description.
 
@@ -555,6 +556,9 @@ All three handlers are currently stubs. Whoever picks this up rewrites them comp
 ## Deferred work (known, chosen to defer)
 
 Items we've hit and consciously pushed off. Revisit when someone needs them, not before.
+
+- **Calendar token encryption at rest** — `calendar_integrations.access_token` / `refresh_token` / `feed_token` are stored plaintext. Swap to app-side AES-GCM + env key (or a KMS call) when the first provider-level threat model calls for it. Managed Postgres is not public-readable today, so this is a hardening item, not an MVP blocker. `feed_token` leak severity is bounded — the feed is read-only and revocable via `/calendar/ics/rotate`.
+- **Calendar pull sync (phase 6b)** — subtracting external events from availability. Would require webhook subscriptions on Google and (for ICS-subscribed users) there's no pull path by design. Deferred until we see real-world double-booking pain that `personal_time` alone doesn't cover.
 
 *(Per-business timezone was originally deferred here; promoted to Phase 3.2 once owner-side phases needed real tz math.)*
 

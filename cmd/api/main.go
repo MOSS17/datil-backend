@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mossandoval/datil-api/internal/calendar"
 	"github.com/mossandoval/datil-api/internal/config"
 	"github.com/mossandoval/datil-api/internal/handler"
 	"github.com/mossandoval/datil-api/internal/notification"
@@ -56,6 +57,17 @@ func main() {
 	calendarRepo := repository.NewCalendarRepository(pool)
 	dashboardRepo := repository.NewDashboardRepository(pool, appointmentRepo)
 
+	// Calendar syncer: Google is push-style (OAuth) and degrades to noop
+	// when creds aren't configured. ICS is pull-style — clients poll the
+	// public ServeFeed endpoint — so it doesn't participate in dispatch.
+	googleSyncer := calendar.NewGoogleSyncer(cfg.GoogleOAuthClientID, cfg.GoogleOAuthClientSecret, cfg.GoogleOAuthRedirectURL, calendarRepo)
+	var googleForDispatch calendar.Syncer = googleSyncer
+	if googleSyncer == nil {
+		googleForDispatch = calendar.NoopSyncer{}
+	}
+	calSyncer := calendar.DispatchingSyncer{Google: googleForDispatch}
+	stateSigner := calendar.NewStateSigner(cfg.JWTSecret)
+
 	// Handlers
 	authHandler := handler.NewAuthHandler(userRepo, businessRepo, refreshRepo, pool, cfg)
 	businessHandler := handler.NewBusinessHandler(businessRepo, uploader)
@@ -63,11 +75,11 @@ func main() {
 	serviceHandler := handler.NewServiceHandler(serviceRepo)
 	appointmentHandler := handler.NewAppointmentHandler(appointmentRepo, businessRepo, serviceRepo, uploader, pool)
 	scheduleHandler := handler.NewScheduleHandler(scheduleRepo)
-	calendarHandler := handler.NewCalendarHandler(calendarRepo)
+	calendarHandler := handler.NewCalendarHandler(cfg, calendarRepo, userRepo, businessRepo, appointmentRepo, serviceRepo, googleSyncer, stateSigner)
 	dashboardHandler := handler.NewDashboardHandler(dashboardRepo, businessRepo)
 	bookingHandler := handler.NewBookingHandler(
 		businessRepo, userRepo, categoryRepo, serviceRepo,
-		appointmentRepo, scheduleRepo, uploader, notifier, pool,
+		appointmentRepo, scheduleRepo, calendarRepo, uploader, notifier, calSyncer, pool,
 	)
 
 	// Router
