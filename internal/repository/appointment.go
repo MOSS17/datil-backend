@@ -33,12 +33,12 @@ func NewAppointmentRepository(pool *pgxpool.Pool) AppointmentRepository {
 	return &appointmentRepo{pool: pool}
 }
 
-const appointmentColumns = "id, user_id, customer_name, start_time, end_time, total, customer_phone, advance_payment_image_url, created_at, updated_at"
+const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, created_at, updated_at"
 
 func scanAppointment(row pgx.Row) (*model.Appointment, error) {
 	var a model.Appointment
 	if err := row.Scan(
-		&a.ID, &a.UserID, &a.CustomerName, &a.StartTime, &a.EndTime,
+		&a.ID, &a.UserID, &a.CustomerName, &a.CustomerEmail, &a.StartTime, &a.EndTime,
 		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
@@ -91,10 +91,10 @@ func (r *appointmentRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.App
 func (r *appointmentRepo) Create(ctx context.Context, tx pgx.Tx, a *model.Appointment, services []model.AppointmentService) error {
 	row := tx.QueryRow(ctx,
 		`INSERT INTO appointments
-		    (user_id, customer_name, start_time, end_time, total, customer_phone, advance_payment_image_url)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		    (user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id, created_at, updated_at`,
-		a.UserID, a.CustomerName, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL,
+		a.UserID, a.CustomerName, a.CustomerEmail, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL,
 	)
 	if err := row.Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt); err != nil {
 		return fmt.Errorf("inserting appointment: %w", err)
@@ -118,10 +118,10 @@ func (r *appointmentRepo) Create(ctx context.Context, tx pgx.Tx, a *model.Appoin
 func (r *appointmentRepo) Update(ctx context.Context, id uuid.UUID, a *model.Appointment) error {
 	cmd, err := r.pool.Exec(ctx,
 		`UPDATE appointments
-		    SET customer_name = $1, start_time = $2, end_time = $3, total = $4,
-		        customer_phone = $5, advance_payment_image_url = $6, updated_at = NOW()
-		  WHERE id = $7`,
-		a.CustomerName, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL, id,
+		    SET customer_name = $1, customer_email = $2, start_time = $3, end_time = $4, total = $5,
+		        customer_phone = $6, advance_payment_image_url = $7, updated_at = NOW()
+		  WHERE id = $8`,
+		a.CustomerName, a.CustomerEmail, a.StartTime, a.EndTime, a.Total, a.CustomerPhone, a.AdvancePaymentImageURL, id,
 	)
 	if err != nil {
 		return fmt.Errorf("updating appointment: %w", err)
