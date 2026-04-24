@@ -33,6 +33,9 @@ type AppointmentRepository interface {
 	// an external calendar push. provider is "google" or "apple"; the
 	// corresponding column is set. No-op if the appointment is missing.
 	UpdateExternalEventID(ctx context.Context, apptID uuid.UUID, provider, externalID string) error
+	// MarkSeen stamps seen_at=NOW() if currently NULL. Returns the post-state
+	// appointment. Idempotent on re-call (already-seen rows are left alone).
+	MarkSeen(ctx context.Context, id uuid.UUID) (*model.Appointment, error)
 }
 
 type appointmentRepo struct {
@@ -43,14 +46,14 @@ func NewAppointmentRepository(pool *pgxpool.Pool) AppointmentRepository {
 	return &appointmentRepo{pool: pool}
 }
 
-const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, google_event_id, ical_sequence, created_at, updated_at"
+const appointmentColumns = "id, user_id, customer_name, customer_email, start_time, end_time, total, customer_phone, advance_payment_image_url, status, google_event_id, ical_sequence, seen_at, created_at, updated_at"
 
 func scanAppointment(row pgx.Row) (*model.Appointment, error) {
 	var a model.Appointment
 	if err := row.Scan(
 		&a.ID, &a.UserID, &a.CustomerName, &a.CustomerEmail, &a.StartTime, &a.EndTime,
 		&a.Total, &a.CustomerPhone, &a.AdvancePaymentImageURL, &a.Status,
-		&a.GoogleEventID, &a.IcalSequence,
+		&a.GoogleEventID, &a.IcalSequence, &a.SeenAt,
 		&a.CreatedAt, &a.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -228,7 +231,7 @@ func (r *appointmentRepo) ListServicesFor(ctx context.Context, appointmentIDs []
 // qualifiedAppointmentColumns mirrors appointmentColumns but prefixes every
 // field with the `a.` alias. Required whenever the SELECT joins another
 // table with overlapping names (users shares id/created_at/updated_at).
-const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.google_event_id, a.ical_sequence, a.created_at, a.updated_at"
+const qualifiedAppointmentColumns = "a.id, a.user_id, a.customer_name, a.customer_email, a.start_time, a.end_time, a.total, a.customer_phone, a.advance_payment_image_url, a.status, a.google_event_id, a.ical_sequence, a.seen_at, a.created_at, a.updated_at"
 
 const appointmentByBusinessSQL = `SELECT ` + qualifiedAppointmentColumns + `
 		   FROM appointments a
@@ -264,6 +267,20 @@ func (r *appointmentRepo) UpdateExternalEventID(ctx context.Context, apptID uuid
 		return fmt.Errorf("stamping %s event id: %w", provider, err)
 	}
 	return nil
+}
+
+// MarkSeen sets seen_at=NOW() only if it's currently NULL (idempotent).
+// Does NOT bump ical_sequence — this is a dashboard-only read flag and
+// shouldn't churn calendar subscribers.
+func (r *appointmentRepo) MarkSeen(ctx context.Context, id uuid.UUID) (*model.Appointment, error) {
+	row := r.pool.QueryRow(ctx,
+		`UPDATE appointments
+		    SET seen_at = COALESCE(seen_at, NOW())
+		  WHERE id = $1
+		  RETURNING `+appointmentColumns,
+		id,
+	)
+	return scanAppointment(row)
 }
 
 func (r *appointmentRepo) ListByDateRangeForUpdate(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, from, to time.Time) ([]model.Appointment, error) {

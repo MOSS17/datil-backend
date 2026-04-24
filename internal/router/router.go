@@ -124,6 +124,7 @@ func New(
 					r.Delete("/", appointmentHandler.Delete)
 					r.Put("/status", appointmentHandler.UpdateStatus)
 					r.Post("/payment-proof", appointmentHandler.UpdatePaymentProof)
+					r.Post("/seen", appointmentHandler.MarkSeen)
 				})
 			})
 
