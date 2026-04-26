@@ -118,6 +118,7 @@ func New(
 			r.Route("/appointments", func(r chi.Router) {
 				r.Get("/", appointmentHandler.List)
 				r.Post("/", appointmentHandler.Create)
+				r.Get("/unseen-count", appointmentHandler.UnseenCount)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", appointmentHandler.Get)
 					r.Put("/", appointmentHandler.Update)

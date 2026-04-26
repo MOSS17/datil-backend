@@ -36,6 +36,10 @@ type AppointmentRepository interface {
 	// MarkSeen stamps seen_at=NOW() if currently NULL. Returns the post-state
 	// appointment. Idempotent on re-call (already-seen rows are left alone).
 	MarkSeen(ctx context.Context, id uuid.UUID) (*model.Appointment, error)
+	// CountUnseenRecent returns the number of unseen appointments booked in
+	// the last 5 days for the given user. Mirrors the dashboard "latest"
+	// list filter so the sidebar badge agrees with what's rendered there.
+	CountUnseenRecent(ctx context.Context, userID uuid.UUID) (int, error)
 }
 
 type appointmentRepo struct {
@@ -281,6 +285,26 @@ func (r *appointmentRepo) MarkSeen(ctx context.Context, id uuid.UUID) (*model.Ap
 		id,
 	)
 	return scanAppointment(row)
+}
+
+// CountUnseenRecent matches the WHERE clause of the dashboard "latest" list
+// in dashboard.go (created_at within the last 5 days, seen_at IS NULL) so
+// the sidebar badge count stays consistent with what the user sees there.
+// The partial index idx_appointments_user_unseen serves this query.
+func (r *appointmentRepo) CountUnseenRecent(ctx context.Context, userID uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*)
+		   FROM appointments
+		  WHERE user_id = $1
+		    AND seen_at IS NULL
+		    AND created_at >= NOW() - INTERVAL '5 days'`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting unseen appointments: %w", err)
+	}
+	return count, nil
 }
 
 func (r *appointmentRepo) ListByDateRangeForUpdate(ctx context.Context, tx pgx.Tx, businessID uuid.UUID, from, to time.Time) ([]model.Appointment, error) {
