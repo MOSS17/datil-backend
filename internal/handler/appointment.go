@@ -411,6 +411,19 @@ func (h *AppointmentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	WriteNoContent(w)
 }
 
+// UnseenCount returns the count of recently-booked appointments the
+// authenticated user has not yet opened. Drives the sidebar badge.
+// GET /appointments/unseen-count
+func (h *AppointmentHandler) UnseenCount(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	count, err := h.repo.CountUnseenRecent(r.Context(), userID)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, "could not count unseen appointments", nil)
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]int{"count": count})
+}
+
 // MarkSeen stamps seen_at so the frontend can stop showing the "new" pill
 // for this appointment across devices. Idempotent: re-calling on an
 // already-seen appointment preserves the original timestamp.
